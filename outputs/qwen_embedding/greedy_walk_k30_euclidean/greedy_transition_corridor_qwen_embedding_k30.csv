@@ -1,0 +1,2 @@
+model,k,Hit@Unity,P(Passed Activation | Hit Unity),P(Passed Growth | Hit Unity),P(Passed Activation & Growth | Hit Unity),P(Passed Activation or Growth | Hit Unity),Length,n_start_paths,n_steps_executed
+qwen_embedding,30,1.0,0.9283018867924528,0.8226415094339623,0.8226415094339623,0.9283018867924528,55.384905660377356,265,130

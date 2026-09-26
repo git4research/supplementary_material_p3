@@ -1,0 +1,82 @@
+You are annotating short sentences according to a 7-tier taxonomy of states of mind.
+
+THE 7 TIERS
+The tiers are ordered from highly contracted, self-destructive states to expansive, integrative states:
+
+1. Collapse (Low Awareness / Self-Destructive):
+   Highly contracted and self-destructive; apathy, despair.
+   Ignorance, self-blame, despair, apathy, disintegrated modes of experience.
+
+2. Striving (Scarcity and Attachment):
+   Contracted and striving; fear, manipulation.
+   Fear, craving, insecurity, anxiety, survival-oriented thinking.
+
+3. Conflict (Ego and Opposition):
+   Defensive; ego, anger.
+   Anger, hostility, dominance, control, power struggles.
+
+4. Activation (Energy Mobilization):
+   Activated and transitional; accepting, courage.
+   Courage, resolve, neutrality, acceptance, behavioral readiness.
+
+5. Growth (Inner Reorganization):
+   Constructive and growth-oriented; relaxed, healing.
+   Openness, forgiveness, transformation, contribution, learning.
+
+6. Clarity (Cognitive Integration):
+   Integrated and harmonious; clarity, reasoning.
+   Reasoning, abstraction, understanding, coherence, meaning.
+
+7. Unity (Non-Dual Integration):
+   Expansive and unifying; grace, wisdom.
+   Compassion, joy, peace, surrender, wholeness.
+
+Each tier represents a mode of organization of experience rather than merely emotional valence.
+
+ABOUT THE SENTENCES
+The sentences use predominantly first-person, introspective, or experiential language; higher-tier sentences tend to adopt more contemplative or aphoristic phrasing that reflects increasingly abstract or integrative states. They rely only in a limited way on explicit emotion words (e.g., "happy", "sad", "angry"), so judge the underlying stance or mode of experience, not just the surface emotion word.
+
+For example, rehearsing every conversation in advance so as never to be caught off guard reflects a striving-oriented stance without any explicit emotion word, and signing up for something despite nerves reflects readiness and transition rather than a direct expression of sentiment.
+
+EXAMPLES (three per tier; none of these sentences is in the set you will annotate)
+Collapse:
+  "Whatever I try just proves how useless I am, so why even bother."
+  "I've stopped answering my phone; nothing anyone says reaches me anymore."
+  "I let the bills pile up because none of it seems worth fixing."
+Striving:
+  "I say yes to every request because I'm afraid they'll stop needing me."
+  "I rehearse every conversation in advance so I never get caught off guard."
+  "I keep shopping online because each new package makes me feel wanted for a moment."
+Conflict:
+  "If they won't respect me, I'll make sure they fear me."
+  "When the referee made that call, I wanted to throw my chair at him."
+  "People who drive slowly in the fast lane deserve to be run off the road."
+Activation:
+  "It's uncomfortable, but I'm ready to deal with it now."
+  "I signed up for the class even though I'm nervous about being the oldest one there."
+  "I'll make the phone call first thing tomorrow instead of putting it off again."
+Growth:
+  "That setback taught me something, so I'm trying a new approach."
+  "I apologized to my sister, and something loosened between us."
+  "Volunteering on weekends has shown me how much I have to offer."
+Clarity:
+  "When I lay the facts side by side, the reason becomes obvious."
+  "Once I mapped out the timeline, the apparent contradiction disappeared."
+  "A good theory explains the exceptions as well as the rule."
+Unity:
+  "In this quiet moment, everything feels gently held together."
+  "Watching the tide come in, I felt no separation between myself and the sea."
+  "Kindness toward a stranger feels like kindness toward myself."
+
+YOUR TASK
+Assign exactly one tier to every sentence below. Judge each sentence on its own. Make every judgment yourself by reading the item; do not write or run code, use keyword rules, or use any other tool to produce the answers.
+
+OUTPUT FORMAT (strict)
+- One line per sentence, in the same order as given: the sentence ID, a tab or comma, then the tier name.
+- Use only these seven tier names: Collapse, Striving, Conflict, Activation, Growth, Clarity, Unity.
+- Example lines:
+    S001,Growth
+    S002,Collapse
+- Output every ID exactly once. Do not skip, merge, or renumber sentences.
+- Plain text only (not JSON, not a table): put all lines inside a single code block (```), with nothing before or after it.
+- Do not add explanations, headers, or any other text.

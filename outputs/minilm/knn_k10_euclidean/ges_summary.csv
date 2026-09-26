@@ -1,0 +1,2 @@
+model,k,reachable_ratio,ges_mean,ges_median,ges_std,ges_pairs_used,total_pairs_sampled
+minilm,10,1.0,2.3866488743893473,2.4352852885048097,0.47570493290938776,9800,9800

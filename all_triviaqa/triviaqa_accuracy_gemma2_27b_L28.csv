@@ -1,0 +1,10 @@
+condition,alpha,hits,n,accuracy_pct
+baseline,,388,500,77.6
+global_ridge,0.1,389,500,77.8
+global_ridge,0.2,387,500,77.4
+global_ridge,0.3,384,500,76.8
+global_ridge,0.5,293,500,58.6
+local_manifold,0.1,387,500,77.4
+local_manifold,0.2,386,500,77.2
+local_manifold,0.3,385,500,77.0
+local_manifold,0.5,354,500,70.8

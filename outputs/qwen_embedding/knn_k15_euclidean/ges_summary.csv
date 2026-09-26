@@ -1,0 +1,2 @@
+model,k,reachable_ratio,ges_mean,ges_median,ges_std,ges_pairs_used,total_pairs_sampled
+qwen_embedding,15,1.0,2.1172075862486532,2.24418386735828,0.4123897299831938,9800,9800

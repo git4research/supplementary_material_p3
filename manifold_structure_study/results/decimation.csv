@@ -1,0 +1,41 @@
+model,estimator,n_sampled,id_mean,id_std,repeats
+BGE,twonn,159,18.519,1.958,20
+BGE,twonn,318,17.922,1.133,20
+BGE,twonn,476,17.506,0.729,20
+BGE,twonn,635,17.161,0.0,1
+Gemma2-27B (L28),twonn,159,18.887,2.002,20
+Gemma2-27B (L28),twonn,318,18.075,1.723,20
+Gemma2-27B (L28),twonn,476,17.675,0.824,20
+Gemma2-27B (L28),twonn,635,17.563,0.0,1
+Gemma2-9B (L29),twonn,159,18.104,2.172,20
+Gemma2-9B (L29),twonn,318,17.683,1.32,20
+Gemma2-9B (L29),twonn,476,17.192,0.869,20
+Gemma2-9B (L29),twonn,635,17.378,0.0,1
+Llama3.1-8B (L16),twonn,159,19.957,1.924,20
+Llama3.1-8B (L16),twonn,318,18.886,1.145,20
+Llama3.1-8B (L16),twonn,476,18.668,0.985,20
+Llama3.1-8B (L16),twonn,635,18.861,0.0,1
+MiniLM,twonn,159,20.303,3.083,20
+MiniLM,twonn,318,17.33,1.663,20
+MiniLM,twonn,476,16.65,0.842,20
+MiniLM,twonn,635,16.293,0.0,1
+MPNet,twonn,159,18.213,2.424,20
+MPNet,twonn,318,17.137,1.087,20
+MPNet,twonn,476,16.743,0.562,20
+MPNet,twonn,635,16.914,0.0,1
+Qwen2.5-14B (L24),twonn,159,23.28,2.91,20
+Qwen2.5-14B (L24),twonn,318,23.26,1.997,20
+Qwen2.5-14B (L24),twonn,476,22.813,0.813,20
+Qwen2.5-14B (L24),twonn,635,22.938,0.0,1
+Qwen2.5-3B (L24),twonn,159,21.248,2.068,20
+Qwen2.5-3B (L24),twonn,318,21.826,1.401,20
+Qwen2.5-3B (L24),twonn,476,22.233,0.781,20
+Qwen2.5-3B (L24),twonn,635,22.513,0.0,1
+qwen2.5_7b (L20),twonn,159,19.486,1.552,20
+qwen2.5_7b (L20),twonn,318,21.255,1.162,20
+qwen2.5_7b (L20),twonn,476,21.001,0.796,20
+qwen2.5_7b (L20),twonn,635,21.405,0.0,1
+Qwen-Embedding,twonn,159,18.609,1.948,20
+Qwen-Embedding,twonn,318,17.504,1.108,20
+Qwen-Embedding,twonn,476,17.278,0.745,20
+Qwen-Embedding,twonn,635,16.887,0.0,1

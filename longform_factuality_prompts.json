@@ -1,0 +1,127 @@
+[
+  {
+    "id": "LF001",
+    "prompt": "Describe Heidegger's concept of 'being-toward-death' and how he developed it in Being and Time.",
+    "metadata": {"category": "philosophy", "topic": "Heidegger"}
+  },
+  {
+    "id": "LF002",
+    "prompt": "What did Wittgenstein argue in the Tractatus Logico-Philosophicus? What was his stance by the time of Philosophical Investigations?",
+    "metadata": {"category": "philosophy", "topic": "Wittgenstein"}
+  },
+  {
+    "id": "LF003",
+    "prompt": "Explain Kant's categorical imperative. In which work is it introduced, and what year was that work published?",
+    "metadata": {"category": "philosophy", "topic": "Kant"}
+  },
+  {
+    "id": "LF004",
+    "prompt": "What was Simone de Beauvoir's central argument in The Second Sex? When was it published, and how was it received at the time?",
+    "metadata": {"category": "philosophy", "topic": "Beauvoir"}
+  },
+  {
+    "id": "LF005",
+    "prompt": "Describe the disagreement between Camus and Sartre. What were the specific events that ended their friendship?",
+    "metadata": {"category": "philosophy", "topic": "Camus_Sartre"}
+  },
+  {
+    "id": "LF006",
+    "prompt": "What is Spinoza's view of God in the Ethics, and how does it relate to his concept of substance? In which part of the Ethics is the central argument made?",
+    "metadata": {"category": "philosophy", "topic": "Spinoza"}
+  },
+  {
+    "id": "LF007",
+    "prompt": "Summarize the Four Noble Truths. In which Buddhist text are they traditionally said to have been first taught, and where was the sermon given?",
+    "metadata": {"category": "religion", "topic": "Buddhism_4NT"}
+  },
+  {
+    "id": "LF008",
+    "prompt": "Who was Hildegard of Bingen and what are her major surviving works? In what century did she live?",
+    "metadata": {"category": "religion", "topic": "Hildegard"}
+  },
+  {
+    "id": "LF009",
+    "prompt": "Describe the central practices of Rinzai Zen Buddhism and the historical figure who introduced them to Japan. What were that figure's major written works?",
+    "metadata": {"category": "religion", "topic": "Rinzai_Zen"}
+  },
+  {
+    "id": "LF010",
+    "prompt": "What did Meister Eckhart teach about the relationship between the soul and God? What happened to him at the end of his life?",
+    "metadata": {"category": "religion", "topic": "Eckhart"}
+  },
+  {
+    "id": "LF011",
+    "prompt": "Explain the doctrine of tawhid in Islamic theology. Identify two Quranic surahs in which it is most directly expressed.",
+    "metadata": {"category": "religion", "topic": "Tawhid"}
+  },
+  {
+    "id": "LF012",
+    "prompt": "What is the difference between Theravada and Mahayana Buddhism in terms of doctrine and key scriptures? In which regions did each tradition take root?",
+    "metadata": {"category": "religion", "topic": "Theravada_Mahayana"}
+  },
+  {
+    "id": "LF013",
+    "prompt": "Describe Marie Curie's discovery of radium and polonium. What year did she win each of her Nobel Prizes and in which fields?",
+    "metadata": {"category": "science", "topic": "Curie"}
+  },
+  {
+    "id": "LF014",
+    "prompt": "Explain Darwin's mechanism of natural selection as he presented it in On the Origin of Species. What did he not yet understand about the mechanism of inheritance?",
+    "metadata": {"category": "science", "topic": "Darwin"}
+  },
+  {
+    "id": "LF015",
+    "prompt": "What did Rosalind Franklin's Photo 51 contribute to the discovery of DNA structure? What was the controversy around how it was used?",
+    "metadata": {"category": "science", "topic": "Franklin"}
+  },
+  {
+    "id": "LF016",
+    "prompt": "Describe how Einstein arrived at the equation E=mc². In which paper and which year did it first appear?",
+    "metadata": {"category": "science", "topic": "Einstein"}
+  },
+  {
+    "id": "LF017",
+    "prompt": "What is the Standard Model of particle physics? Name the most recently confirmed particle predicted by the model, and the year and facility where it was confirmed.",
+    "metadata": {"category": "science", "topic": "StandardModel"}
+  },
+  {
+    "id": "LF018",
+    "prompt": "What happened at the Council of Nicaea in 325 CE? Who convened it and what was the central theological dispute being resolved?",
+    "metadata": {"category": "history", "topic": "Nicaea"}
+  },
+  {
+    "id": "LF019",
+    "prompt": "Describe the events of the Meiji Restoration. When did it occur and what were its main political and economic reforms?",
+    "metadata": {"category": "history", "topic": "Meiji"}
+  },
+  {
+    "id": "LF020",
+    "prompt": "What was the Peace of Westphalia and what did it establish? When was it signed and what conflicts did it end?",
+    "metadata": {"category": "history", "topic": "Westphalia"}
+  },
+  {
+    "id": "LF021",
+    "prompt": "Describe Ada Lovelace's role in the development of computing. What were her notes on the Analytical Engine, and what year did she write them?",
+    "metadata": {"category": "history", "topic": "Lovelace"}
+  },
+  {
+    "id": "LF022",
+    "prompt": "Describe the structure of Dante's Inferno. How many cantos does it contain, and how is Hell organized?",
+    "metadata": {"category": "literature", "topic": "Dante"}
+  },
+  {
+    "id": "LF023",
+    "prompt": "What are the main innovations of Virginia Woolf's Mrs Dalloway in narrative technique? When was it published?",
+    "metadata": {"category": "literature", "topic": "Woolf"}
+  },
+  {
+    "id": "LF024",
+    "prompt": "Who painted The Garden of Earthly Delights and approximately when? Describe its three panels.",
+    "metadata": {"category": "art", "topic": "Bosch"}
+  },
+  {
+    "id": "LF025",
+    "prompt": "What is Borges's story 'The Library of Babel' about? What collection does it appear in and what year was it published?",
+    "metadata": {"category": "literature", "topic": "Borges"}
+  }
+]

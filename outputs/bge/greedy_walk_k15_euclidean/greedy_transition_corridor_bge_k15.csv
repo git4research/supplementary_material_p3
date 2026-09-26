@@ -1,0 +1,2 @@
+model,k,Hit@Unity,P(Passed Activation | Hit Unity),P(Passed Growth | Hit Unity),P(Passed Activation & Growth | Hit Unity),P(Passed Activation or Growth | Hit Unity),Length,n_start_paths,n_steps_executed
+bge,15,1.0,0.9849056603773585,0.9584905660377359,0.9584905660377359,0.9849056603773585,48.467924528301886,265,84

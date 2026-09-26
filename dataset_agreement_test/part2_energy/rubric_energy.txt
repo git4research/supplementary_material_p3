@@ -1,0 +1,83 @@
+You are comparing pairs of short sentences on a single continuous dimension: the "energy" of the state of mind each sentence expresses.
+
+THE ENERGY DIMENSION
+Energy is a continuum from highly contracted, self-destructive states (lowest) to expansive, integrative states (highest). Along it lie seven ordered levels, from lowest to highest:
+
+1. Collapse (Low Awareness / Self-Destructive):
+   Highly contracted and self-destructive; apathy, despair.
+   Ignorance, self-blame, despair, apathy, disintegrated modes of experience.
+
+2. Striving (Scarcity and Attachment):
+   Contracted and striving; fear, manipulation.
+   Fear, craving, insecurity, anxiety, survival-oriented thinking.
+
+3. Conflict (Ego and Opposition):
+   Defensive; ego, anger.
+   Anger, hostility, dominance, control, power struggles.
+
+4. Activation (Energy Mobilization):
+   Activated and transitional; accepting, courage.
+   Courage, resolve, neutrality, acceptance, behavioral readiness.
+
+5. Growth (Inner Reorganization):
+   Constructive and growth-oriented; relaxed, healing.
+   Openness, forgiveness, transformation, contribution, learning.
+
+6. Clarity (Cognitive Integration):
+   Integrated and harmonious; clarity, reasoning.
+   Reasoning, abstraction, understanding, coherence, meaning.
+
+7. Unity (Non-Dual Integration):
+   Expansive and unifying; grace, wisdom.
+   Compassion, joy, peace, surrender, wholeness.
+
+Energy is continuous: the levels are ordered bands, not boxes, and two sentences at the same level can still differ in energy. Across and within levels, a more contracted or self-focused stance means lower energy, and a more expansive or integrated stance means higher energy. If both sentences seem to belong to the same level, decide which sits further toward the expansive end.
+
+Energy reflects the mode of organization of experience, not merely emotional valence or intensity. A calm, contemplative sentence can be high energy; an intense, agitated sentence can be low energy (for example, Conflict is higher than Striving and Collapse, but lower than a quiet sentence of acceptance). Judge the underlying stance, not surface wording.
+
+ABOUT THE SENTENCES
+The sentences use predominantly first-person, introspective, or experiential language; higher-energy sentences tend to adopt more contemplative or aphoristic phrasing that reflects increasingly abstract or integrative states.
+
+For example, rehearsing every conversation in advance so as never to be caught off guard reflects a striving-oriented stance without any explicit emotion word, and signing up for something despite nerves reflects readiness and transition rather than a direct expression of sentiment.
+
+EXAMPLES (three per level, lowest to highest; none of these sentences appears in the pairs)
+Collapse:
+  "Whatever I try just proves how useless I am, so why even bother."
+  "I've stopped answering my phone; nothing anyone says reaches me anymore."
+  "I let the bills pile up because none of it seems worth fixing."
+Striving:
+  "I say yes to every request because I'm afraid they'll stop needing me."
+  "I rehearse every conversation in advance so I never get caught off guard."
+  "I keep shopping online because each new package makes me feel wanted for a moment."
+Conflict:
+  "If they won't respect me, I'll make sure they fear me."
+  "When the referee made that call, I wanted to throw my chair at him."
+  "People who drive slowly in the fast lane deserve to be run off the road."
+Activation:
+  "It's uncomfortable, but I'm ready to deal with it now."
+  "I signed up for the class even though I'm nervous about being the oldest one there."
+  "I'll make the phone call first thing tomorrow instead of putting it off again."
+Growth:
+  "That setback taught me something, so I'm trying a new approach."
+  "I apologized to my sister, and something loosened between us."
+  "Volunteering on weekends has shown me how much I have to offer."
+Clarity:
+  "When I lay the facts side by side, the reason becomes obvious."
+  "Once I mapped out the timeline, the apparent contradiction disappeared."
+  "A good theory explains the exceptions as well as the rule."
+Unity:
+  "In this quiet moment, everything feels gently held together."
+  "Watching the tide come in, I felt no separation between myself and the sea."
+  "Kindness toward a stranger feels like kindness toward myself."
+
+YOUR TASK
+For each pair, decide which sentence, A or B, reflects the HIGHER energy on this continuum. You must choose one; if they seem close, pick the one that is even slightly higher. Judge each pair on its own. Make every judgment yourself by reading the item; do not write or run code, use keyword rules, or use any other tool to produce the answers.
+
+OUTPUT FORMAT (strict)
+- One line per pair, in the same order as given: the pair ID, a tab or comma, then A or B.
+- Example lines:
+    P0001,A
+    P0002,B
+- Output every pair ID exactly once. Do not skip, merge, or renumber pairs.
+- Plain text only (not JSON, not a table): put all lines inside a single code block (```), with nothing before or after it.
+- Do not add explanations, headers, or any other text.

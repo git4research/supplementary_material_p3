@@ -1,0 +1,16 @@
+{
+  "csv_path": "full_dataset_with_scores_new.csv",
+  "embed_path": "outputs/qwen_embedding/embeddings.npy",
+  "model": "qwen_embedding",
+  "n_nodes": 636,
+  "dim": 1024,
+  "k": 15,
+  "metric": "euclidean",
+  "normalize_embeddings": true,
+  "symmetrize_rule": "undirected union with min edge weight",
+  "random_seed": 0,
+  "connected_components": 1,
+  "largest_component_size": 636,
+  "average_degree": 21.80503144654088,
+  "density": 0.03428464063921522
+}

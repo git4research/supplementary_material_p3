@@ -1,0 +1,123 @@
+{
+  "model_key": "gemma2_9b",
+  "model_id": "google/gemma-2-9b-it",
+  "activation_space": "block_output",
+  "recommended_layer": 29,
+  "recommended_depth_percentage": 69.04761904761905,
+  "n_hidden_layers": 42,
+  "layer_sweep": {
+    "strategy": "uniform_percentages",
+    "rounding": "nearest_integer_half_up_clamped_to_1_through_N",
+    "requested_percentages": [
+      10,
+      20,
+      30,
+      40,
+      50,
+      60,
+      70,
+      80,
+      90,
+      100
+    ],
+    "percentage_to_layer": [
+      {
+        "requested_percentage": 10.0,
+        "layer": 4
+      },
+      {
+        "requested_percentage": 20.0,
+        "layer": 8
+      },
+      {
+        "requested_percentage": 30.0,
+        "layer": 13
+      },
+      {
+        "requested_percentage": 40.0,
+        "layer": 17
+      },
+      {
+        "requested_percentage": 50.0,
+        "layer": 21
+      },
+      {
+        "requested_percentage": 60.0,
+        "layer": 25
+      },
+      {
+        "requested_percentage": 70.0,
+        "layer": 29
+      },
+      {
+        "requested_percentage": 80.0,
+        "layer": 34
+      },
+      {
+        "requested_percentage": 90.0,
+        "layer": 38
+      },
+      {
+        "requested_percentage": 100.0,
+        "layer": 42
+      }
+    ],
+    "layers": [
+      4,
+      8,
+      13,
+      17,
+      21,
+      25,
+      29,
+      34,
+      38,
+      42
+    ],
+    "actual_percentages": {
+      "4": 9.523809523809524,
+      "8": 19.047619047619047,
+      "13": 30.952380952380953,
+      "17": 40.476190476190474,
+      "21": 50.0,
+      "25": 59.523809523809526,
+      "29": 69.04761904761905,
+      "34": 80.95238095238095,
+      "38": 90.47619047619048,
+      "42": 100.0
+    },
+    "n_unique_layers": 10
+  },
+  "dataset_sha256": "ee94d84e9d52e0963dde1b29c9f3ef2639638a3b99330d021d811ca5f35a6e90",
+  "activation_meta_sha256": "0ef700e8c3d6e816770f61e42fe33511150cbfb7f847d196c675ccf8cc0fde44",
+  "composite_weights": {
+    "ridge_r2": 0.4,
+    "logreg_acc": 0.25,
+    "tts_jump01": 0.25,
+    "silhouette": 0.1
+  },
+  "metrics_at_recommended": {
+    "depth_percentage": 69.04761904761905,
+    "ridge_r2": 0.8226450648521826,
+    "logreg_acc": 0.7232406496062993,
+    "tts_jump01": 0.7453319133830316,
+    "silhouette": 0.020816847681999207,
+    "composite": 0.9800013136901714
+  },
+  "knn_k_for_tts": 30,
+  "knn_metric": "euclidean",
+  "n_folds": 5,
+  "ridge_alpha": 1.0,
+  "all_layers_evaluated": [
+    4,
+    8,
+    13,
+    17,
+    21,
+    25,
+    29,
+    34,
+    38,
+    42
+  ]
+}

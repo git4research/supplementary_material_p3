@@ -1,0 +1,32 @@
+{
+  "model_key": "qwen2.5_3b",
+  "recommended_layer": 24,
+  "composite_weights": {
+    "ridge_r2": 0.4,
+    "logreg_acc": 0.25,
+    "tts_jump01": 0.25,
+    "silhouette": 0.1
+  },
+  "metrics_at_recommended": {
+    "ridge_r2": 0.7800800833705663,
+    "logreg_acc": 0.6115649606299213,
+    "tts_jump01": 0.6999594539802676,
+    "silhouette": 0.014057742431759834,
+    "composite": 0.9940466555715896
+  },
+  "knn_k_for_tts": 30,
+  "knn_metric": "euclidean",
+  "n_folds": 5,
+  "ridge_alpha": 1.0,
+  "all_layers_evaluated": [
+    4,
+    8,
+    12,
+    16,
+    20,
+    24,
+    28,
+    32,
+    36
+  ]
+}

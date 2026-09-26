@@ -1,0 +1,2 @@
+model,k,reachable_ratio,ges_mean,ges_median,ges_std,ges_pairs_used,total_pairs_sampled
+mpnet,20,1.0,2.0151466951938097,2.154992879155566,0.3962446141508994,9800,9800

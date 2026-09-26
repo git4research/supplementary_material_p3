@@ -1,0 +1,2 @@
+model,k,reachable_ratio,ges_mean,ges_median,ges_std,ges_pairs_used,total_pairs_sampled
+qwen2.5_3b_L24,15,1.0,2.0614338754413604,2.13506468763907,0.41649438643252723,9800,9800
