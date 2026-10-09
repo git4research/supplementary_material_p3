@@ -23,7 +23,7 @@ all outputs derived from it are included.
 | Steering (2.5.2) | `13_build_steering_vectors.py`, `14_steering_hooks.py`, `15_generate_with_steering.py`, `run_steering_pipeline.py`, `model_config.py`, `model_runtime.py` |
 | Short-form factuality (TriviaQA) | `17b_fetch_triviaqa.py`, `17b_generate_triviaqa.py`, `17c_score_triviaqa.py` |
 | Long-form factuality | `17_generate_factuality.py`, `18_llm_judge.py`, `20b_plot_multimodel_factuality.py` |
-| Generation quality (pairwise) | `16_generate_mental_health.py`, `32_build_pairs_plan.py`, `33_llm_judge_pairwise.py`, `34b_plot_multimodel_pairwise.py` |
+| Generation quality (pairwise) | `16_generate_mental_health.py`, `32_build_pairs_plan.py`, `18_llm_judge.py --task mental_health_pairwise`, `34b_plot_multimodel_pairwise.py` |
 | Annotation reliability (App. B.5) | `dataset_agreement_test/` |
 
 Install dependencies with `pip install -r requirements.txt`.
@@ -34,6 +34,7 @@ App. C scripts additionally need `vaderSentiment`, the NRC VAD lexicon (v2.1), t
 - `triviaqa_prompts.json`: the 500 TriviaQA questions (rc.nocontext validation, fixed-seed subsample).
 - `longform_factuality_prompts.json`: the 25 open-ended long-form questions.
 - `mh_diag_prompts.json`: prompts targeting low-level tiers used for the pairwise evaluation.
+- `llm_pair_wise_rubric.txt`: the pairwise judging rubric; judgments in `all_mh_judged/` were collected by giving this rubric and the `to_judge` sheet to the judge in a chat interface, and `18_llm_judge.py --task mental_health_pairwise` applies the same rubric through an API.
 - `dataset_agreement_test/part*/rubric_*.txt`: rubrics given to the blind LLM annotators.
 
 ## Results
@@ -47,7 +48,7 @@ App. C scripts additionally need `vaderSentiment`, the NRC VAD lexicon (v2.1), t
   (`hf_results/gemma2_7b_L28` holds Gemma-2-27B at layer 28.)
 - `outputs/figures_multimodel/`: summary CSVs, LaTeX tables, and figures for factuality, pairwise evaluation, and layer selection.
 - `outputs/tts_ges_all_models/`: TTS and GES for all ten representations and k in {10, 15, 20, 30}.
-- `outputs/tfidf_baseline/`: TF-IDF baseline metrics (20 splits).
+- `outputs/tfidf_baseline/`: TF-IDF baseline metrics (30 splits).
 - `outputs/<encoder>/`: per-encoder TTS, GES, containment, and trajectory statistics.
 - `manifold_structure_study/results/`: PCA, TwoNN, MLE, reference distributions, and sampling-scale results.
 - `dataset_agreement_test/`: blind LLM tier labels and pairwise energy judgments (by sentence/pair ID) and the resulting statistics.
