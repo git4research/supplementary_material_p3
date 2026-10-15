@@ -1,3 +1,10 @@
+"""Forward hooks for inference-time activation steering (Section 2.5.2).
+
+Each steerer adds alpha * delta to the output of one decoder block, by default only on generated
+tokens (the multi-token prompt pass is skipped). ConstantDirectionSteer adds a fixed direction
+(global_ridge uses ridge_w); LocalManifoldSteer takes a per-token uphill step on the anchor kNN graph;
+RandomDirectionSteer is a random-direction control. Example: python 14_steering_hooks.py [--sweep]
+"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -16,6 +23,7 @@ DEFAULT_MODEL_KEY = f"{MODEL_REGISTRY['qwen'].key}_L{DEFAULT_LAYER}"
 
 
 class _SteerBase:
+    """Base steerer: a forward hook on one decoder block that adds alpha * delta to its output."""
 
     def __init__(
         self,
@@ -44,6 +52,7 @@ class _SteerBase:
 
 
     def _steering_delta(self, hidden: torch.Tensor) -> Optional[torch.Tensor]:
+        """Return the steering vector for this forward call, or None to leave the output unchanged."""
         raise NotImplementedError
 
     def reset(self):
@@ -78,6 +87,7 @@ class _SteerBase:
         )
 
     def _make_hook(self):
+        """Build the forward-hook entry point that perturbs the block's hidden-state output."""
         def hook(module, inputs, output):
             if isinstance(output, tuple):
                 hidden = output[0]
@@ -87,11 +97,14 @@ class _SteerBase:
                 rest = None
 
             delta_raw = self._steering_delta(hidden)
+            # None (e.g., prompt pass or no uphill neighbor) leaves the block output unchanged.
             if delta_raw is None:
                 return output
 
             delta = delta_raw.to(device=hidden.device, dtype=hidden.dtype)
 
+            # match_hidden: rescale delta to the mean L2 norm of the current hidden states (over batch and
+            # positions), so the added vector has norm alpha * mean ||h||; in cached decoding this is per token.
             if self.scale_mode == "match_hidden":
                 hidden_norm = hidden.float().norm(dim=-1).mean()
                 delta_norm  = delta.float().norm()
@@ -132,6 +145,7 @@ class _SteerBase:
 
 
 class RandomDirectionSteer(_SteerBase):
+    """Control condition: a seeded random unit direction, scaled like the other steerers."""
 
     def __init__(self, model, alpha, seed: int = 0, steer_prompt: bool = False,
                  layer_index_1based: int = DEFAULT_LAYER,
@@ -157,6 +171,7 @@ class RandomDirectionSteer(_SteerBase):
 
 
 class ConstantDirectionSteer(_SteerBase):
+    """Adds a constant direction, loaded by name from steering/directions (e.g. ridge_w) or passed in."""
 
     def __init__(
         self,
@@ -210,6 +225,7 @@ class ConstantDirectionSteer(_SteerBase):
         self.v = self._to_model(v)
 
     def _steering_delta(self, hidden: torch.Tensor) -> Optional[torch.Tensor]:
+        # A multi-token call is the prompt pass; with KV caching each generated token has seq_len == 1.
         if hidden.shape[1] > 1 and not self.steer_prompt:
             return None
         return self.v
@@ -223,6 +239,7 @@ class ConstantDirectionSteer(_SteerBase):
 
 
 class LocalManifoldSteer(_SteerBase):
+    """Per-token steering along the anchor kNN graph toward higher Ridge-predicted score (local_manifold)."""
 
     def __init__(
         self,
@@ -317,6 +334,7 @@ class LocalManifoldSteer(_SteerBase):
         return self.A_indices[start:end]
 
     def _expected_step_from_anchor(self, i: int) -> Optional[torch.Tensor]:
+        """Expected uphill step sum_j P(j|i) (x_j - x_i) over graph neighbors j of anchor i; None if none is uphill."""
         nbrs = self._graph_neighbors(i)
         if nbrs.numel() == 0:
             return None
@@ -324,6 +342,7 @@ class LocalManifoldSteer(_SteerBase):
         x_i      = self.H[i]
         nbr_vecs = self.H[nbrs]
 
+        # Score increment of each neighbor along the Ridge direction; keep only uphill moves (> eps).
         deltas = (nbr_vecs - x_i) @ self.w_ridge
         valid_mask = deltas > self.eps
         if not torch.any(valid_mask):
@@ -333,6 +352,7 @@ class LocalManifoldSteer(_SteerBase):
         valid_delta = deltas[valid_mask]
         sim_local   = valid_nbrs @ x_i
 
+        # Utility = similarity to anchor i + score gain - quadratic jump penalty; P(j|i) = softmax(utility / tau_inner).
         utility = (
               self.lam_sim   * sim_local
             + self.lam_delta * valid_delta
@@ -347,8 +367,11 @@ class LocalManifoldSteer(_SteerBase):
 
 
     def _steering_delta(self, hidden: torch.Tensor) -> Optional[torch.Tensor]:
+        """Map the current hidden state to its nearest anchor(s) and return their weighted expected uphill step."""
         seq_len = hidden.shape[1]
 
+        # The prompt pass (seq_len > 1) is skipped unless steer_prompt. Only the first sequence in the
+        # batch (its last position) selects anchors; the resulting delta is added to every row.
         if seq_len > 1:
             if not self.steer_prompt:
                 return None
@@ -361,6 +384,7 @@ class LocalManifoldSteer(_SteerBase):
             return None
         h_norm = h_current / h_norm_val
 
+        # Anchors and h are unit-norm, so this is cosine similarity; weight the top_k nearest by softmax(sim / tau_outer).
         sims = self.H @ h_norm
         top_vals, top_ids = torch.topk(sims, self.top_k)
         anchor_weights_outer = torch.softmax(top_vals / self.tau_outer, dim=0)
@@ -377,10 +401,12 @@ class LocalManifoldSteer(_SteerBase):
             valid_weights.append(w_i)
 
         self._step += 1
+        # No uphill neighbor from any selected anchor: no perturbation is applied at this step.
         if not transition_vectors:
             self._n_no_uphill += 1
             return None
 
+        # Renormalize the outer weights over anchors that produced a step.
         weights_t = torch.tensor(valid_weights, device=self._device, dtype=torch.float32)
         weights_t = weights_t / weights_t.sum()
         stacked   = torch.stack(transition_vectors, dim=0)
@@ -398,6 +424,7 @@ class LocalManifoldSteer(_SteerBase):
 
 
 def _smoke_test():
+    """Greedy generation for one prompt: no steering, global_ridge and local_manifold on the default Qwen artifacts."""
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     model_id = DEFAULT_MODEL_ID
@@ -470,6 +497,7 @@ def _smoke_test():
 
 
 def _sweep_local_manifold():
+    """Diagnostic: compare local_manifold outputs across top_k and lam_sim settings."""
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     model_id = DEFAULT_MODEL_ID

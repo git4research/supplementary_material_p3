@@ -1,7 +1,14 @@
+"""Plot layer-selection metrics vs. relative depth for all six LLMs (Section 2.5.1, App. M).
+
+Reads each model's layer_metrics CSV (from 12_select_steering_layer.py), plots five metrics per layer,
+stars the chosen steering layer, and asserts it maximizes the composite score. Paths are repo-relative.
+Usage (from the repository root): python 20c_plot_layer_selection.py
+"""
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
 
+# (display name, metrics CSV, number of layers, chosen layer, color, marker)
 MODELS = [
     ("Qwen2.5-3B",   "outputs/qwen2.5_3b/layer_selection/layer_metrics.csv",                       36, 24, "#9ecae1", "o"),
     ("Qwen2.5-7B",   "hf_results/qwen_7b_L20/layer_selection/layer_metrics (1).csv",                28, 20, "#4292c6", "o"),
@@ -17,10 +24,13 @@ OUT = "outputs/figures_multimodel/layer_selection_multimodel"
 fig, axes = plt.subplots(1, len(METRICS), figsize=(7.2, 1.85), sharex=True)
 for name, csv, nl, chosen, col, mk in MODELS:
     d = pd.read_csv(csv)
+    # Layer index as a percentage of total depth.
     depth = d["layer"] / nl * 100
+    # Sanity check: the chosen layer must be the argmax of the composite score.
     assert d.loc[d.composite.idxmax(), "layer"] == chosen, (name, "chosen layer is not argmax composite")
     for ax, (m, _) in zip(axes, METRICS):
         ax.plot(depth, d[m], color=col, marker=mk, ms=2.5, lw=1.0, label=name)
+        # Star marks the chosen layer.
         r = d[d.layer == chosen]
         ax.plot(r["layer"] / nl * 100, r[m], marker="*", ms=8, color=col, mec="black", mew=0.4, ls="", zorder=5)
 for ax, (_, title) in zip(axes, METRICS):
@@ -30,6 +40,7 @@ for ax, (_, title) in zip(axes, METRICS):
     ax.grid(alpha=0.25, lw=0.4)
     for s in ("top", "right"):
         ax.spines[s].set_visible(False)
+# Zero line on the silhouette panel.
 axes[3].axhline(0, color="0.5", lw=0.5)
 axes[4].set_ylim(-0.05, 1.1)
 h, l = axes[0].get_legend_handles_labels()

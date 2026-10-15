@@ -1,3 +1,9 @@
+"""Score the LLM judges' blind re-annotations against the original labels (Appendix B.5).
+
+Parses replies in part1_tier/responses/ and part2_energy/responses/; computes tier agreement
+(exact, within-one, kappa, Spearman) and pair concordance (overall, cross- vs same-tier, by score
+gap) with bootstrap CIs and binomial tests; writes JSON, Markdown, LaTeX, CSVs and figures to results/.
+Usage (from this directory): python analyze_agreement.py"""
 from __future__ import annotations
 
 import json
@@ -14,19 +20,24 @@ from common import TIER_IDX, TIER_ORDER, rubric_overlap
 
 HERE = Path(__file__).resolve().parent
 RES = HERE / "results"
+# Bootstrap resamples and seed for 95% percentile CIs.
 N_BOOT = 2000
 BOOT_SEED = 0
+# Bins (left-closed) for the absolute original-score gap within a pair.
 GAP_BINS = [0, 1, 2, 4, 8, np.inf]
 GAP_LABELS = ["<1", "1-2", "2-4", "4-8", ">=8"]
+# Tolerant line patterns for 'S001,Tier' and 'P0001,A' answers (case-insensitive).
 TIER_RE = re.compile(r"\b(S\d{3,4})\b\W{0,3}\s*(" + "|".join(TIER_ORDER) + r")\b", re.I)
 PAIR_RE = re.compile(r"\b(P\d{4})\b\W{0,3}\s*([AB])\b", re.I)
 
 
 def judge_name(path: Path) -> str:
+    """Judge name from a response file name, e.g. tier_responses_<judge>.txt -> <judge>."""
     return re.sub(r"^(tier_|energy_)?responses?_", "", path.stem)
 
 
 def parse(path: Path, regex, valid_ids, canon):
+    """Extract ID -> answer; IDs given conflicting answers are dropped. Returns answers, counts, IDs to re-ask."""
     ans, conflicts, dup_same = {}, set(), 0
     text = path.read_text(encoding="utf-8", errors="replace")
     for m in regex.finditer(text):
@@ -46,6 +57,7 @@ def parse(path: Path, regex, valid_ids, canon):
 
 
 def write_reask(part, judge, ids, table, fmt_item, rubric):
+    """Write a follow-up prompt for missing or conflicting items; returns its file name, or None if none."""
     if not ids:
         return None
     out = RES / f"reask_{part}_{judge}.txt"
@@ -56,11 +68,13 @@ def write_reask(part, judge, ids, table, fmt_item, rubric):
 
 
 def boot_ci(stat_fn, n, rng):
+    """95% percentile bootstrap CI of stat_fn over resampled row indices."""
     vals = [stat_fn(rng.integers(0, n, n)) for _ in range(N_BOOT)]
     return [float(np.nanpercentile(vals, 2.5)), float(np.nanpercentile(vals, 97.5))]
 
 
 def tier_stats(true_idx, pred_idx, score):
+    """Agreement between original and judged tier ordinals, plus Spearman of judged tier vs. original score."""
     t, p = np.asarray(true_idx), np.asarray(pred_idx)
     return {
         "n": int(len(t)),
@@ -74,6 +88,7 @@ def tier_stats(true_idx, pred_idx, score):
 
 
 def analyze_tier(path, key, leak_mask):
+    """Tier metrics for one judge on all sentences and excluding rubric examples, with CIs and a confusion matrix."""
     judge = judge_name(path)
     ans, comp, miss = parse(path, TIER_RE, set(key.index), lambda s: s.capitalize())
     rubric = (HERE / "part1_tier" / "rubric_tier.txt").read_text(encoding="utf-8").strip()
@@ -92,17 +107,20 @@ def analyze_tier(path, key, leak_mask):
     cm = confusion_matrix(d.tier_idx, d.pred_idx, labels=range(7))
     out["confusion_matrix"] = cm.tolist()
     out["recall_by_tier"] = {TIER_ORDER[i]: float(cm[i, i] / cm[i].sum()) if cm[i].sum() else None for i in range(7)}
+    # Most frequent tier confusions, counting both directions together.
     off = [(int(cm[i, j] + cm[j, i]), TIER_ORDER[i], TIER_ORDER[j]) for i in range(7) for j in range(i + 1, 7)]
     out["top_confusions"] = [{"pair": f"{a}/{b}", "count": c} for c, a, b in sorted(off, reverse=True)[:5]]
     return out, d[["pred"]].rename(columns={"pred": judge}), cm
 
 
 def pair_stats(correct):
+    """Concordance: fraction of pairs where the judge picked the higher-scored sentence."""
     c = np.asarray(correct, dtype=float)
     return float(c.mean()) if len(c) else float("nan")
 
 
 def analyze_pairs(path, key, leak_ids):
+    """Pair metrics for one judge: concordance overall, by tier relation and by score gap, with CIs and binomial tests."""
     judge = judge_name(path)
     ans, comp, miss = parse(path, PAIR_RE, set(key.index), lambda s: s.upper())
     rubric = (HERE / "part2_energy" / "rubric_energy.txt").read_text(encoding="utf-8").strip()
@@ -113,8 +131,10 @@ def analyze_pairs(path, key, leak_ids):
     out = {"completeness": comp, "rate_answer_A": float((d.choice == "A").mean()),
            "n_score_tied_excluded": int((d.higher == "tie").sum())}
     rng = np.random.default_rng(BOOT_SEED)
+    # A pair is excluded from the second subset if either sentence is a rubric example.
     leak = d.A_index.isin(leak_ids) | d.B_index.isin(leak_ids)
     for name, sub in [("all", d), ("excl_rubric_examples", d[~leak])]:
+        # Pairs with equal original scores have no correct answer and are left out.
         nt = sub[sub.higher != "tie"]
         corr = (nt.choice == nt.higher).values
         k, n = int(corr.sum()), int(len(corr))
@@ -125,6 +145,7 @@ def analyze_pairs(path, key, leak_ids):
         res["by_gap"] = {str(b): {"n": int((bins == b).sum()),
                                   "concordance": pair_stats(corr[(bins == b).values]) if (bins == b).any() else None}
                          for b in GAP_LABELS}
+        # Split by whether both sentences share an original tier.
         same = (nt.A_tier == nt.B_tier).values
         for part, mask in [("cross_tier", ~same), ("same_tier", same)]:
             c = corr[mask]
@@ -136,6 +157,7 @@ def analyze_pairs(path, key, leak_ids):
 
 
 def plot_confusion(cm, judge):
+    """Save a heatmap of original vs. judged tier counts for one judge."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -152,6 +174,7 @@ def plot_confusion(cm, judge):
 
 
 def plot_gap(pair_results):
+    """Plot concordance by score-gap bin for each judge (all pairs)."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -171,6 +194,7 @@ def pct(x):
 
 
 def write_tex(summary):
+    """Write booktabs LaTeX tables for tier agreement and pair concordance."""
     L = ["% Generated by analyze_agreement.py -- do not edit by hand", "% needs \\usepackage{booktabs}"]
     if summary["tier"]:
         L += ["\\begin{table}[htbp]", "\\centering", "\\small",
@@ -210,6 +234,7 @@ def write_tex(summary):
 
 
 def write_report(summary):
+    """Write a Markdown summary of all results to results/report.md."""
     L = ["# Dataset agreement test -- results", "",
          f"Dataset sentences: {summary['n_sentences']}; sentences quoted in a rubric: "
          f"{summary['n_rubric_example_sentences']} {summary['rubric_example_indices']}", ""]
@@ -251,11 +276,13 @@ def write_report(summary):
 
 
 def main():
+    """Load answer keys, flag rubric examples, analyze each judge reply, compare judges, and write outputs."""
     RES.mkdir(exist_ok=True)
     tkey = pd.read_csv(HERE / "key" / "tier_key.csv").set_index("id")
     tkey["tier_idx"] = tkey.tier.map(TIER_IDX)
     pkey = pd.read_csv(HERE / "key" / "pairs_key.csv").set_index("pair_id")
     rubrics = [HERE / "part1_tier" / "rubric_tier.txt", HERE / "part2_energy" / "rubric_energy.txt"]
+    # Flag sentences quoted in a rubric so results can also be reported without them.
     leak = rubric_overlap(tkey.reset_index(), rubrics)
     leak.index = tkey.index
     leak_ids = set(tkey.loc[leak, "index"])
@@ -270,6 +297,7 @@ def main():
         summary["tier"][j] = r
         tier_preds.append(preds)
         plot_confusion(cm, j)
+        # Per-judge list of sentences whose judged tier differs from the original.
         dis = tkey.join(preds, how="inner")
         dis = dis[dis[j] != dis.tier]
         dis.assign(tier_gap=(dis[j].map(TIER_IDX) - dis.tier_idx))[
@@ -284,6 +312,7 @@ def main():
     if pair_results:
         plot_gap(pair_results)
 
+    # With 2+ judges: consensus disagreements with the original tier, and pairwise judge agreement.
     between = {}
     if len(tier_preds) > 1:
         T = pd.concat(tier_preds, axis=1, join="inner")

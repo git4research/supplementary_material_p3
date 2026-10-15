@@ -1,3 +1,9 @@
+"""Sampling-scale sensitivity of intrinsic dimension (Appendix D and G).
+
+For each embedding set, estimates ID (TwoNN by default, or MLE) on repeated
+random subsets at each fraction in DECIMATION_FRACTIONS (the full set once).
+Writes decimation.csv and decimation.npz to the results directory.
+"""
 from __future__ import annotations
 
 import csv
@@ -18,11 +24,13 @@ def _estimator_fn(name, twonn_discard):
 
 
 def default_sizes(n, fractions=config.DECIMATION_FRACTIONS):
+    """Subsample sizes for the given fractions of n, clipped to [10, n], deduplicated and sorted."""
     return sorted({min(n, max(10, int(round(f * n)))) for f in fractions})
 
 
 def decimation_curve(X, sizes, repeats, rng, estimator="twonn",
                      twonn_discard=config.TWONN_DISCARD_FRACTION):
+    """Mean and SD of the ID estimate at each size; sizes >= n are estimated once on all points."""
     est = _estimator_fn(estimator, twonn_discard)
     n = X.shape[0]
     means, stds = [], []
@@ -41,11 +49,13 @@ def run_decimation(embedding_sets, results_dir, seed=config.SEED,
                    fractions=config.DECIMATION_FRACTIONS,
                    repeats=config.DECIMATION_REPEATS, estimator="twonn",
                    twonn_discard=config.TWONN_DISCARD_FRACTION):
+    """Compute decimation curves for every embedding set and save them as CSV and NPZ."""
     results_dir = Path(results_dir)
     results_dir.mkdir(parents=True, exist_ok=True)
 
     curves, rows = {}, []
     for es in embedding_sets:
+        # Same seed for every model, so results do not depend on processing order.
         rng = np.random.default_rng(seed)
         sizes = default_sizes(es.n, fractions)
         means, stds = decimation_curve(es.X, sizes, repeats, rng, estimator, twonn_discard)
@@ -66,6 +76,7 @@ def run_decimation(embedding_sets, results_dir, seed=config.SEED,
 
 
 def print_summary(curves):
+    """Print one line per (model, subsample size)."""
     print(f"{'model':<22}{'n':>6}{'ID mean':>9}{'ID std':>8}")
     print("-" * 45)
     for lab, d in curves.items():

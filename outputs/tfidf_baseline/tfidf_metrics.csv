@@ -1,2 +1,2 @@
 model,n_samples,n_splits,test_size,ridge_r2_mean,ridge_mse_mean,tier_acc_mean,tier_f1_mean,tfidf_ngram,tfidf_min_df,tfidf_max_df,tfidf_sublinear_tf
-TF-IDF (1-2gram),636,20,0.2,0.4035431648710329,5.014030525020463,0.480078125,0.44115004807474634,"(1,2)",2,0.95,True
+TF-IDF (1-2gram),636,30,0.2,0.4087747396223086,4.986529940066544,0.47213541666666664,0.4342233818179459,"(1,2)",2,0.95,True

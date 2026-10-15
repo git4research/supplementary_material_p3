@@ -1,3 +1,10 @@
+"""Draw one hard-coded trajectory on the 2-D UMAP projection (Appendix L figures).
+
+Reads outputs/<MODEL>/knn_k<K>_euclidean/umap_coordinates.csv, overlays the numbered path in
+PATH_ROWS (arrows, start/end markers) on the tier-colored scatter, and writes
+umap_<MODEL>_k<K>_path.png and path_coordinates_<MODEL>_k<K>.csv to the same folder.
+Usage: python 10_mark_path.py  (edit MODEL, K, and PATH_ROWS at the top to change the path)
+"""
 from __future__ import annotations
 
 import os
@@ -42,6 +49,7 @@ TIER_COLORS = {
 }
 
 
+# Path to draw: (step, node index in the UMAP CSV, tier, score, sentence).
 PATH_ROWS = [
     (0, 11, "Collapse", -4.75, "My voice feels too small to count."),
     (1, 244, "Conflict", -1.78, "Please, they're not even on my level."),
@@ -85,6 +93,7 @@ def main():
         columns=["step", PATH_INDEX_COL, "path_tier", "path_score", "path_sentence"],
     )
 
+    # Attach UMAP coordinates to each path node by matching node_id to the index column.
     merged = path_df.merge(
         df[[INDEX_COL, "umap_x", "umap_y", TIER_COL]],
         left_on=PATH_INDEX_COL,
@@ -98,6 +107,7 @@ def main():
 
     fig, ax = plt.subplots(figsize=(10, 8))
 
+    # Background: all sentences colored by tier.
     for tier in TIER_ORDER:
         sub = df[df[TIER_COL] == tier]
         if len(sub) == 0:
@@ -124,6 +134,7 @@ def main():
     )
 
 
+    # Arrow for each consecutive step, then step numbers on top of each node.
     for i in range(len(merged) - 1):
         x1, y1 = merged.loc[i, ["umap_x", "umap_y"]]
         x2, y2 = merged.loc[i + 1, ["umap_x", "umap_y"]]

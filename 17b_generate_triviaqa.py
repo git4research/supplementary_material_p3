@@ -1,3 +1,9 @@
+"""Generate steered TriviaQA answers (Section 2.5.3, short-form factuality).
+
+Reads the prompts JSON from 17b_fetch_triviaqa.py and runs every (condition, alpha) cell with greedy
+decoding by default (temperature 0, at most 24 new tokens); writes factuality_triviaqa.jsonl.
+Usage: python 17b_generate_triviaqa.py --model qwen --prompts triviaqa_prompts.json
+"""
 from __future__ import annotations
 
 import argparse
@@ -7,8 +13,10 @@ import os
 from pathlib import Path
 from model_config import add_model_arguments, experiment_from_args, generation_kwargs
 
+# Avoid crashes from duplicate OpenMP runtimes.
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
+# Load the shared generation interface from 15_generate_with_steering.py (its name starts with a digit, so it cannot be imported normally).
 _HERE = Path(__file__).parent
 _spec = importlib.util.spec_from_file_location("gen_iface", _HERE / "15_generate_with_steering.py")
 _gen = importlib.util.module_from_spec(_spec)
@@ -44,6 +52,7 @@ def main():
     alphas = [float(x) for x in args.alphas.split(",") if x.strip()]
     out_path = Path(args.out) if args.out else (config.generations_dir / "factuality_triviaqa.jsonl")
 
+    # Baseline is generated once (no alpha); each steered condition once per alpha.
     n_steered = sum(condition != "baseline" for condition in conditions)
     n_combos = int("baseline" in conditions) + n_steered * len(alphas)
     n_gens = len(prompts) * n_combos * args.n_samples

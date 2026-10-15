@@ -1,3 +1,11 @@
+"""Graph geometry under alternative labelings (Appendix C.2).
+
+Re-labels sentences by sorting each confound score (VADER valence, abstraction, formality) into
+7 ordered groups with the same sizes as the real tiers, then recomputes tier-transition smoothness
+(TTS), within-group geodesic stretch (GES), geodesic containment and a no-revisit greedy walk for
+the real tiers and each alternative labeling. Reads the dataset CSV, outputs/<model>/embeddings.npy
+and the kNN adjacency; writes outputs/alternative_labeling_all_metrics.csv.
+"""
 from __future__ import annotations
 
 import os
@@ -19,6 +27,7 @@ K_LIST = [30]
 GRAPH_METRIC_NAME = "euclidean"
 
 REAL_TIER_ORDER = ["Collapse", "Striving", "Conflict", "Activation", "Growth", "Clarity", "Unity"]
+# Generic ordinal group names (pos1..pos7) so real tiers and confound bins share one label space.
 POSITION_LABELS = [f"pos{i+1}" for i in range(7)]
 
 BRYSBAERT_PATH = "brysbaert_concreteness.csv"
@@ -36,6 +45,7 @@ def compute_valence_vader(sentences):
 
 
 def compute_abstraction_brysbaert(sentences, path):
+    # Abstraction = 5 - mean concreteness (Brysbaert 1-5 scale) of matched words; 2.5 if none match.
     lex = pd.read_csv(path)
     conc = dict(zip(lex["Word"].str.lower(), lex["Conc.M"]))
     out = []
@@ -85,6 +95,7 @@ def get_confound_scores(sentences):
 
 
 def bin_by_matched_sizes(continuous_scores, real_tiers, real_tier_order):
+    """Sort by score (ascending) and cut into 7 ordered groups whose sizes equal the real tier sizes."""
     tier_sizes = {t: int((real_tiers == t).sum()) for t in real_tier_order}
     n = len(continuous_scores)
     order = np.argsort(continuous_scores, kind="stable")
@@ -116,6 +127,7 @@ def load_model_graph(model, k):
 
 
 def compute_full_shortest_paths(A_sym):
+    # All-pairs Dijkstra on the edge-weighted graph; predecessors allow path reconstruction.
     dist_matrix, predecessors = shortest_path(
         A_sym, method="D", directed=False, unweighted=False, return_predecessors=True
     )
@@ -123,6 +135,7 @@ def compute_full_shortest_paths(A_sym):
 
 
 def reconstruct_path(predecessors, src, dst):
+    # Walk predecessors back from dst; -9999 is scipy's "no predecessor" marker (returns [] if unreachable).
     if src == dst:
         return [src]
     path = [dst]
@@ -137,6 +150,7 @@ def reconstruct_path(predecessors, src, dst):
 
 
 def metric_tts(A, positions, position_labels):
+    """TTS: fraction of edges (i < j entries of A) joining the same group (jump 0) or adjacent groups (jump <= 1)."""
     pos_idx = {p: i for i, p in enumerate(position_labels)}
     idx_arr = np.array([pos_idx[p] for p in positions])
     Acoo = A.tocoo()
@@ -157,6 +171,7 @@ def metric_tts(A, positions, position_labels):
 
 
 def metric_ges(dist_matrix, E, positions, position_labels, n_pairs, seed):
+    """Within-group GES: mean geodesic / Euclidean distance over random same-group pairs, plus reachable fraction."""
     rng = np.random.default_rng(seed)
     stretches = []
     reachable, total = 0, 0
@@ -183,6 +198,7 @@ def metric_ges(dist_matrix, E, positions, position_labels, n_pairs, seed):
 
 
 def metric_containment(dist_matrix, predecessors, positions, position_labels, n_pairs, seed):
+    """Geodesic containment: for random same-group pairs, fraction of shortest-path nodes (endpoints included) in that group."""
     rng = np.random.default_rng(seed)
     per_position = {}
     for p in position_labels:
@@ -202,6 +218,7 @@ def metric_containment(dist_matrix, predecessors, positions, position_labels, n_
             scores.append(np.mean([positions[node] == p for node in path]))
         per_position[p] = float(np.mean(scores)) if scores else np.nan
 
+    # Averages over all groups, the two extreme groups, and the five middle groups.
     result = {f"containment_{p}": v for p, v in per_position.items()}
     result["containment_mean_all"] = float(np.nanmean(list(per_position.values())))
     result["containment_mean_endpoints"] = float(np.nanmean(
@@ -214,6 +231,7 @@ def metric_containment(dist_matrix, predecessors, positions, position_labels, n_
 
 
 def metric_greedy_walk(A, E, positions, position_labels, max_steps, seed=0):
+    """No-revisit greedy cosine walk from groups 1-3 toward group 7; corridor = groups 4-5 (as in 9_no_revisit_greedy_walk.py)."""
     start_positions = set(position_labels[:3])
     target_position = position_labels[-1]
     corridor_positions = set(position_labels[3:5])
@@ -286,6 +304,7 @@ def main():
             if len(df) != E.shape[0]:
                 print(f"  [skip] size mismatch")
                 continue
+            # Symmetrize the kNN graph for undirected shortest paths.
             A_sym = A.maximum(A.T)
 
             print("  computing all-pairs shortest paths (shared across labelings)...")

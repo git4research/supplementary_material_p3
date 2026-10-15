@@ -1,3 +1,10 @@
+"""Generation driver for baseline, global_ridge and local_manifold steering at several alphas (Section 2.5.2).
+
+For each (condition, alpha), attaches the script 14 hook and samples n_samples responses per prompt
+with deterministic per-prompt seeds. Input: a prompts JSON list. Output: a JSONL of generations plus
+a .run.json manifest (settings, artifact hashes, package versions) that must match to resume a run.
+Example: python 15_generate_with_steering.py --model qwen --prompts prompts.json --out gens.jsonl
+"""
 from __future__ import annotations
 
 import argparse
@@ -19,6 +26,7 @@ from model_runtime import get_layer_module, load_model_and_tokenizer, pick_devic
 
 import importlib.util
 
+# Load 14_steering_hooks.py by path (its filename is not a valid module name).
 _HERE = Path(__file__).parent
 _spec = importlib.util.spec_from_file_location("steering_hooks", _HERE / "14_steering_hooks.py")
 _steering = importlib.util.module_from_spec(_spec)
@@ -30,6 +38,7 @@ DEFAULT_MODEL_ID = _steering.DEFAULT_MODEL_ID
 DEFAULT_MODEL_KEY = _steering.DEFAULT_MODEL_KEY
 DEFAULT_LAYER = _steering.DEFAULT_LAYER
 
+# A factory maps (model, alpha, max_new_tokens) to a steerer, or None for no steering.
 SteeringFactory = Callable[[object, float, int], Optional[object]]
 
 
@@ -81,6 +90,7 @@ CONDITIONS_WITHOUT_ALPHA = {"baseline"}
 
 
 def _resolve_factory(cond: str, config=None) -> SteeringFactory:
+    """Return the factory for a condition; 'random_steer' is accepted but not included in 'all'."""
     factory = _random_steer if cond == "random_steer" else STEERING_PRESETS.get(cond)
     if factory is not None:
         return partial(factory, config=config) if config is not None else factory
@@ -121,6 +131,8 @@ def generate_one(
         seed: int,
         device: str,
 ) -> Dict:
+    """Generate one chat-formatted response for a single prompt; the steerer, if any, is already attached."""
+    # Reset per-generation steerer counters.
     if steering is not None and hasattr(steering, "reset"):
         steering.reset()
 
@@ -143,6 +155,7 @@ def generate_one(
             temperature=temperature if do_sample else 1.0,
             top_p=top_p if do_sample else 1.0,
             pad_token_id=tokenizer.eos_token_id,
+            # KV caching makes each generated token a single-position forward call, which the hooks steer.
             use_cache=True,
             disable_compile=True,
         )
@@ -192,11 +205,13 @@ def _append_jsonl(jsonl_path: Path, row: Dict):
 
 
 def stable_seed(prompt_id, sample_idx, seed_base):
+    """Deterministic seed from prompt ID, sample index and base seed (identical across conditions and alphas)."""
     prompt_seed = int.from_bytes(hashlib.sha256(str(prompt_id).encode()).digest()[:4], "big")
     return (seed_base + 1000 * sample_idx + prompt_seed) % (2 ** 32)
 
 
 def _check_resume(out_path, manifest, resume):
+    """When resuming into a non-empty JSONL, require an identical run manifest; return the manifest path."""
     manifest_path = out_path.with_suffix(out_path.suffix + ".run.json")
     if resume and out_path.exists() and out_path.stat().st_size:
         if not manifest_path.exists():
@@ -229,6 +244,7 @@ def run_generation_grid(
         device="auto",
         dtype="auto",
 ) -> Path:
+    """Run every (condition, alpha) x prompt x sample generation not already in the JSONL; return its path."""
     if conditions is None:
         conditions = ALL_CONDITIONS
     if alphas is None:
@@ -251,6 +267,7 @@ def run_generation_grid(
     if len({prompt["id"] for prompt in prompts}) != len(prompts):
         raise ValueError("Prompt IDs must be unique within a run.")
     artifact_hashes = {}
+    # Hash the steering artifacts in use; the kNN graph is required only for local_manifold.
     if any(condition in ("global_ridge", "local_manifold") for condition in conditions):
         artifact_hashes = config.validate_artifacts(require_graph="local_manifold" in conditions)
     device = str(next(model.parameters()).device) if model is not None else pick_device(device)
@@ -275,6 +292,7 @@ def run_generation_grid(
     if loaded_id and loaded_id != model_id:
         raise ValueError(f"Provided model {loaded_id} differs from requested {model_id}.")
     get_layer_module(model, layer)
+    # Pre-flight: build each steerer once (not attached) so missing or mismatched artifacts fail early.
     for condition in conditions:
         _resolve_factory(condition, config)(model, 0.0, max_new_tokens)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -291,6 +309,7 @@ def run_generation_grid(
 
     plan = []
     for cond in conditions:
+        # baseline runs once with alpha=None; steered conditions run once per alpha.
         if cond in CONDITIONS_WITHOUT_ALPHA:
             plan.append((cond, None))
         else:
@@ -414,6 +433,7 @@ def _smoke_prompts() -> List[Dict]:
 
 
 def _smoke_test(args):
+    """Quick check: two prompts, alpha 0.3, one sample each; prints responses grouped by prompt."""
     config = experiment_from_args(args)
     out_path = Path(args.out) if args.out else config.generations_dir / "smoke_multimodel.jsonl"
     run_generation_grid(

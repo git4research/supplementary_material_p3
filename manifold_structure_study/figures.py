@@ -1,3 +1,9 @@
+"""Figures for the manifold-structure study (Appendix D and G).
+
+make_cumvar_figure(): cumulative PCA explained variance per model (real vs.
+per-dimension shuffle) with each model's TwoNN estimate marked on its curve.
+make_decimation_figure(): ID vs. subsample size with +/-1 SD bands. Saved as PNG and PDF.
+"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,6 +30,7 @@ _PALETTE = [
 
 
 def _assign_colors(labels):
+    """Map labels to the fixed palette, or to evenly spaced HSV colors if there are more labels."""
     n = len(labels)
     if n <= len(_PALETTE):
         cols = _PALETTE[:n]
@@ -35,6 +42,7 @@ def _assign_colors(labels):
 
 def make_cumvar_figure(curves: dict, out_dir, filename="manifold_figure",
                        thresholds=(0.90, 0.95)):
+    """Plot cumulative explained variance per model and mark the point at x = rounded TwoNN ID."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -42,6 +50,7 @@ def make_cumvar_figure(curves: dict, out_dir, filename="manifold_figure",
     colors = _assign_colors(labels)
     ids = [curves[lab]["twonn"] for lab in labels]
 
+    # x-range: a little beyond the largest component count needed for 99% variance.
     xmax = 0
     for lab in labels:
         cum = curves[lab]["cumulative"]
@@ -61,10 +70,12 @@ def make_cumvar_figure(curves: dict, out_dir, filename="manifold_figure",
         ax.plot(np.arange(1, len(cum_sh) + 1), cum_sh, color=col, lw=0.85,
                 ls=(0, (4, 3)), alpha=0.6)
         idv = curves[lab]["twonn"]
+        # Marker sits on the real-data curve at the rounded TwoNN estimate.
         xi = int(round(idv))
         yi = float(curves[lab]["cumulative"][xi - 1])
         mark.append({"lab": lab, "id": idv, "xi": xi, "yi": yi, "col": col})
 
+    # ID labels go in a column to the right, pushed apart vertically to avoid overlap.
     label_x = max(m["xi"] for m in mark) + xmax * 0.035
     min_gap = 0.075
     y_prev = None
@@ -119,6 +130,7 @@ def make_cumvar_figure(curves: dict, out_dir, filename="manifold_figure",
 
 def make_decimation_figure(curves: dict, out_dir, filename="decimation_figure",
                            title="Sampling-scale sensitivity"):
+    """Plot mean ID vs. number of sampled points per model, with +/-1 SD bands."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -157,6 +169,7 @@ def make_decimation_figure(curves: dict, out_dir, filename="decimation_figure",
 
 
 def make_figure_from_saved(results_dir, **kwargs):
+    """Rebuild the cumulative-variance figure from a saved curves.npz."""
     results_dir = Path(results_dir)
     curves = np.load(results_dir / "curves.npz", allow_pickle=True)["curves"].item()
     return make_cumvar_figure(curves, results_dir, **kwargs)

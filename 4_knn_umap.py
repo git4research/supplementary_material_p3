@@ -1,3 +1,9 @@
+"""2-D UMAP plots of the sentence embeddings, coloured by tier, with kNN edges overlaid (Sections 2.2-2.3, 3.2).
+
+For each encoder and k, runs UMAP (n_neighbors=k, cosine metric) on outputs/<model>/embeddings.npy and
+draws the edges of the graph in outputs/<model>/knn_k<k>_euclidean/adjacency_csr.npz (from 3_build_knn.py).
+Writes umap_coordinates.csv and umap_<model>_k<k>.png to that graph directory.
+"""
 from __future__ import annotations
 
 import os
@@ -26,6 +32,7 @@ TIER_COL = "tier"
 RANDOM_SEED = 42
 MIN_DIST = 0.15
 UMAP_METRIC = "cosine"
+# True: UMAP on the embeddings; False: UMAP on dense adjacency rows.
 USE_EMBEDDINGS_FOR_UMAP = True
 
 TIER_ORDER = ["Collapse", "Striving", "Conflict", "Activation", "Growth", "Clarity", "Unity"]
@@ -40,6 +47,7 @@ TIER_COLORS = {
     "Unity": "#a855f7",
 }
 
+# Plot-title labels; models not listed fall back to their key.
 MODEL_LABELS = {
     "bge": "BGE-large",
     "mpnet": "MPNet",
@@ -48,6 +56,7 @@ MODEL_LABELS = {
 
 
 def run_single_k(df: pd.DataFrame, model: str, k: int) -> None:
+    """Run UMAP for one (model, k) and save the coordinates and the tier-coloured plot."""
     model_dir = os.path.join(OUTPUT_ROOT, model)
     graph_dir = os.path.join(model_dir, f"knn_k{k}_{GRAPH_METRIC_NAME}")
     graph_path = os.path.join(graph_dir, GRAPH_FILENAME)
@@ -81,6 +90,7 @@ def run_single_k(df: pd.DataFrame, model: str, k: int) -> None:
     else:
         X = A.toarray()
 
+    # UMAP neighbourhood size matches k; the drawn edges come from the saved kNN graph.
     reducer = umap.UMAP(
         n_neighbors=k,
         min_dist=MIN_DIST,
@@ -100,6 +110,7 @@ def run_single_k(df: pd.DataFrame, model: str, k: int) -> None:
     fig, ax = plt.subplots(figsize=(9, 7))
 
     Acoo = A.tocoo()
+    # Draw each undirected edge once (i < j) as a faint line beneath the points.
     for i, j in zip(Acoo.row, Acoo.col):
         if i >= j:
             continue

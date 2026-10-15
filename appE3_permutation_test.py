@@ -1,3 +1,11 @@
+"""Label-permutation tests for score R^2 and tier F1 (Appendix E.3).
+
+For each representation, the observed metrics are means over N_SPLITS (20) random 80/20 splits
+(Ridge for score R^2, logistic regression for weighted tier F1). Each null sample shuffles the
+score or tier labels (N_PERM_SCORE / N_PERM_TIER = 200 permutations, shared across models) and
+re-runs all splits. Reads the dataset CSV and all_embeddings/embeddings_*.npy next to this script;
+writes per-model CSVs, null histograms and all_models_summary.csv to outputs/permutation_test/.
+"""
 from __future__ import annotations
 
 import hashlib
@@ -51,6 +59,7 @@ TIER_ORDER = [
     "Unity",
 ]
 
+# Legacy tier names mapped onto the current label set.
 TIER_ALIASES = {
     "Shadow": "Collapse",
     "Unconscious / Collapse": "Collapse",
@@ -59,6 +68,7 @@ TIER_ALIASES = {
 
 
 def stable_int_seed(s: str, mod: int = 1_000_000) -> int:
+    # Deterministic integer seed derived from a string (MD5-based, stable across runs).
     h = hashlib.md5(s.encode("utf-8")).hexdigest()
     return int(h[:8], 16) % mod
 
@@ -91,6 +101,7 @@ def normalize_tier_name(tier: object) -> str:
 
 
 def encode_tiers(tiers: pd.Series) -> np.ndarray:
+    """Map tier names to integer ids 0..6 in TIER_ORDER; raises on unknown names."""
     tier_to_idx = {tier: idx for idx, tier in enumerate(TIER_ORDER)}
     encoded = []
     unknown = []
@@ -152,6 +163,7 @@ def eval_once_regression(X: np.ndarray, y_score: np.ndarray, seed: int) -> dict[
 
 
 def eval_once_classification(X: np.ndarray, y_tier: np.ndarray, seed: int) -> dict[str, float]:
+    # Stratified split when possible; falls back to an unstratified split if stratification fails.
     try:
         X_train, X_test, yt_train, yt_test = train_test_split(
             X, y_tier, test_size=TEST_SIZE, random_state=seed, stratify=y_tier
@@ -171,6 +183,7 @@ def eval_once_classification(X: np.ndarray, y_tier: np.ndarray, seed: int) -> di
 
 
 def eval_repeated_splits(X: np.ndarray, y_score: np.ndarray, y_tier: np.ndarray) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Run regression and classification on every split seed; return per-split metrics and their mean/std."""
     rows = []
     for seed in SPLIT_SEEDS:
         m_reg = eval_once_regression(X, y_score, seed)
@@ -182,6 +195,7 @@ def eval_repeated_splits(X: np.ndarray, y_score: np.ndarray, y_tier: np.ndarray)
 
 
 def perm_p_value(null_vals: np.ndarray, observed: float) -> float:
+    # One-sided permutation p-value with +1 correction: (#null >= observed + 1) / (N + 1).
     return (float(np.sum(null_vals >= observed)) + 1.0) / (len(null_vals) + 1.0)
 
 
@@ -204,6 +218,7 @@ def score_permutation_test_with_indices(
     observed_mean_r2: float,
     perm_indices_score: list[np.ndarray],
 ) -> tuple[np.ndarray, float]:
+    """Null distribution of mean split R^2 with shuffled scores (tier labels unchanged), plus p-value."""
     null_r2 = []
     for k, idx in enumerate(perm_indices_score, start=1):
         ys = y_score[idx]
@@ -223,6 +238,7 @@ def tier_permutation_test_with_indices(
     observed_mean_f1: float,
     perm_indices_tier: list[np.ndarray],
 ) -> tuple[np.ndarray, float]:
+    """Null distribution of mean split weighted F1 with shuffled tiers (scores unchanged), plus p-value."""
     null_f1 = []
     for k, idx in enumerate(perm_indices_tier, start=1):
         yt = y_tier[idx]
@@ -305,6 +321,7 @@ def run_for_model(
         xlabel="Mean R² under shuffled score labels",
         out_png=nested_score_png,
     )
+    # Also copy the histogram to the top-level output folder for easy access.
     shutil.copyfile(nested_score_png, top_score_png)
 
     print(f"[Tier permutation test] N_PERM_TIER={N_PERM_TIER}")
@@ -373,6 +390,7 @@ def main() -> None:
     )
     print(f"[Saved tier label mapping] {mapping_path}")
 
+    # Draw permutations once so every model is tested against the same shuffled labels.
     rng_score = np.random.default_rng(PERM_RNG_SEED_BASE + 1)
     rng_tier = np.random.default_rng(PERM_RNG_SEED_BASE + 2)
 

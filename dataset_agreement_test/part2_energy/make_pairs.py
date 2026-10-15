@@ -1,3 +1,9 @@
+"""Sample sentence pairs for the forced-choice energy test, part 2 of the agreement test (Appendix B.5).
+
+Draws N_PAIRS distinct pairs with a fixed seed, randomizes A/B order, and writes
+prompts/energy_prompt_full.txt, prompts/energy_pairs.{json,xlsx} and the key ../key/pairs_key.csv.
+Usage: python make_pairs.py
+"""
 import json
 import sys
 from pathlib import Path
@@ -6,12 +12,14 @@ import numpy as np
 import pandas as pd
 
 HERE = Path(__file__).resolve().parent
+# Make the shared common.py importable.
 sys.path.insert(0, str(HERE.parent))
 from common import N_PAIRS, SEED_PAIRS, load_dataset
 
 df = load_dataset()
 n = len(df)
 rng = np.random.default_rng(SEED_PAIRS)
+# Rejection-sample distinct unordered pairs, then flip a coin for which sentence is shown as A.
 seen, pairs = set(), []
 while len(pairs) < N_PAIRS:
     i, j = (int(x) for x in rng.choice(n, size=2, replace=False))
@@ -24,6 +32,7 @@ while len(pairs) < N_PAIRS:
 rows = []
 for k, (a, b) in enumerate(pairs, 1):
     ra, rb = df.iloc[a], df.iloc[b]
+    # Ground truth: the side with the higher original score ('tie' if equal).
     higher = "A" if ra.score > rb.score else "B" if rb.score > ra.score else "tie"
     rows.append({"pair_id": f"P{k:04d}", "A": ra.sentence, "B": rb.sentence,
                  "A_index": int(ra["index"]), "B_index": int(rb["index"]),
@@ -45,6 +54,7 @@ prompt = (f"{rubric}\n\nPAIRS ({len(P)} total; output exactly {len(P)} lines)\n\
 (HERE / "prompts" / "energy_pairs.json").write_text(
     json.dumps([{"id": r.pair_id, "A": r.A, "B": r.B} for r in P.itertuples()], ensure_ascii=False, indent=1),
     encoding="utf-8")
+# Blank answer sheet for judges, and the full key with tiers, scores and gaps.
 P[["pair_id", "A", "B"]].assign(answer="").to_excel(HERE / "prompts" / "energy_pairs.xlsx", index=False)
 P.to_csv(HERE.parent / "key" / "pairs_key.csv", index=False)
 

@@ -1,3 +1,9 @@
+"""Generate steered responses to mental-health prompts (Section 2.5.3, generation quality).
+
+Runs baseline / global_ridge / local_manifold over a grid of alphas and samples and appends one
+JSON line per generation to mental_health.jsonl; pairs are then built by 32_build_pairs_plan.py.
+Usage: python 16_generate_mental_health.py --model qwen --prompts mh_diag_prompts.json
+"""
 from __future__ import annotations
 
 import argparse
@@ -7,6 +13,7 @@ from pathlib import Path
 from model_config import add_model_arguments, experiment_from_args, generation_kwargs
 
 
+# Load the shared generation interface from 15_generate_with_steering.py (its name starts with a digit, so it cannot be imported normally).
 _HERE = Path(__file__).parent
 _spec = importlib.util.spec_from_file_location("gen_iface", _HERE / "15_generate_with_steering.py")
 _gen = importlib.util.module_from_spec(_spec)
@@ -16,6 +23,7 @@ _spec.loader.exec_module(_gen)
 PROMPTS_PATH    = _HERE / "mental_health_prompts.json"
 
 
+# Prompt ids used by --small preview mode.
 SMALL_PROMPT_IDS = ["MH001", "MH009", "MH016", "MH020", "MH027"]
 
 
@@ -43,6 +51,7 @@ def _parse_args():
 
 
 def _print_small_summary(jsonl_path: Path, prompts_path: Path):
+    """Print --small responses grouped by prompt, with tier and category metadata."""
     with open(jsonl_path) as f:
         rows = [json.loads(line) for line in f if line.strip()]
 
@@ -111,6 +120,7 @@ def main():
         n_samples = args.n_samples
         out_path = Path(args.out) if args.out else config.generations_dir / "mental_health.jsonl"
 
+        # Baseline is generated once (no alpha); each steered condition once per alpha.
         n_steered_combos = n_steered * len(alphas)
         n_combos = int("baseline" in conditions) + n_steered_combos
         n_gens = len(prompts) * n_combos * n_samples
@@ -138,6 +148,7 @@ def main():
         **generation_kwargs(args),
     )
 
+    # The summary is always printed in --small mode (the --print-responses flag has no extra effect).
     if args.small and (args.print_responses or True):
         _print_small_summary(out_path, args.prompts)
 

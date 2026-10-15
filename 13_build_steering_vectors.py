@@ -1,3 +1,10 @@
+"""Build steering artifacts at the selected layer for one model (Section 2.5.2).
+
+Inputs: script 11's L2-normalized anchor activations and the annotated scores. Outputs under
+OUTPUT_ROOT/<key>_L<layer>/: anchors (embeddings.npy), a symmetric kNN graph (k=30, Euclidean),
+the Ridge score direction steering/directions/ridge_w.npy (unnormalized), and provenance metadata.
+Example: python 13_build_steering_vectors.py --model qwen --layer 24
+"""
 import argparse
 import importlib.util
 import json
@@ -13,6 +20,7 @@ from model_config import PROJECT_ROOT, add_model_arguments, check_dataset_proven
 
 
 def fit_ridge_score_direction(embeddings, scores, alpha):
+    """Fit Ridge(activations -> score) and return its coefficient vector as the score direction."""
     probe = Ridge(alpha=alpha)
     probe.fit(embeddings, scores)
     direction = probe.coef_.astype(np.float32)
@@ -34,6 +42,7 @@ def main():
     if config.layer not in meta["layers_saved"]:
         raise ValueError("The selected layer is absent from the current activation extraction.")
     if meta.get("activation_space") != "block_output":
+        # Legacy hidden-state activations are accepted only for the original Qwen2.5-3B setup.
         if config.spec.model_id != "Qwen/Qwen2.5-3B-Instruct" or config.layer >= meta["n_hidden_layers"]:
             raise ValueError("Re-extract with script 11 to align activations with the block-output hooks.")
     check_dataset_provenance(meta, args.csv)
@@ -49,12 +58,14 @@ def main():
     if not np.allclose(np.linalg.norm(embeddings, axis=1), 1, atol=1e-4):
         raise ValueError("Expected L2-normalized activation rows from script 11.")
 
+    # Load the graph builder from 3_build_knn.py by path (its filename is not a valid module name).
     module_spec = importlib.util.spec_from_file_location("knn_builder", PROJECT_ROOT / "3_build_knn.py")
     builder = importlib.util.module_from_spec(module_spec)
     sys.modules[module_spec.name] = builder
     module_spec.loader.exec_module(builder)
     graph = builder.build_symmetric_knn_graph(embeddings, k=30, metric="euclidean")
     direction = fit_ridge_score_direction(embeddings, scores, args.ridge_alpha)
+    # Sanity check: correlation between anchor projections onto ridge_w and their scores.
     correlation = float(np.corrcoef(embeddings @ direction, scores)[0, 1])
 
     root = config.artifact_dir

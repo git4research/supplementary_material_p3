@@ -1,3 +1,10 @@
+"""Encode every dataset sentence with the four sentence encoders (Section 2.1).
+
+Encoders: BGE-large-en-v1.5, all-mpnet-base-v2, all-MiniLM-L6-v2, Qwen3-Embedding-0.6B.
+Reads the "sentence" column of full_dataset_with_scores_new.csv and writes one L2-normalized
+float32 matrix (n_sentences x dim) per encoder to outputs/<model>/embeddings.npy;
+models whose output file already exists are skipped.
+"""
 import os
 import numpy as np
 import pandas as pd
@@ -10,6 +17,7 @@ TEXT_COL = "sentence"
 OUTPUT_ROOT = "outputs"
 
 BATCH_SIZE = 32
+# Unit-norm outputs, so squared Euclidean distance = 2 - 2 * cosine similarity.
 NORMALIZE = True
 
 
@@ -37,6 +45,7 @@ def generate_embeddings(model_name, model_id, sentences):
 
     embeddings = np.asarray(embeddings, dtype=np.float32)
 
+    # Sanity check: norms should be ~1 when NORMALIZE is True.
     norms = np.linalg.norm(embeddings, axis=1)
     print(f"[OK] {model_name} shape: {embeddings.shape}")
     print(f"norm mean = {norms.mean():.6f}, std = {norms.std():.6f}")

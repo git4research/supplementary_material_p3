@@ -1,3 +1,9 @@
+"""Dimensionality diagnostics and reference controls per embedding set (Appendix D and G).
+
+For each set: PCA components at variance thresholds, participation ratio, TwoNN
+(and optional MLE), plus estimates on a coordinate-wise shuffle, isotropic sphere
+samples and covariance-matched Gaussian draws. Writes manifold_results.{csv,json},
+covariance_controls.json and curves.npz."""
 from __future__ import annotations
 
 import csv
@@ -14,6 +20,7 @@ import estimators
 def analyze_one(es, rng, thresholds, twonn_discard, with_mle,
                 covariance_repeats=config.COVARIANCE_REPEATS,
                 covariance_rng=None, covariance_records=None):
+    """Compute all diagnostics for one set; returns the table row and cumulative-variance curves (real, shuffled)."""
     if not isinstance(covariance_repeats, (int, np.integer)) or covariance_repeats < 2:
         raise ValueError("covariance_repeats must be an integer >= 2")
     prof = estimators.pca_profile(es.X, thresholds)
@@ -35,6 +42,7 @@ def analyze_one(es, rng, thresholds, twonn_discard, with_mle,
     if with_mle:
         row["mle"] = round(estimators.mle(es.X), 2)
 
+    # Control 1: shuffle each coordinate independently, breaking dependence between coordinates.
     Xsh = controls.shuffle_within_columns(es.X, rng)
     prof_sh = estimators.pca_profile(Xsh, thresholds)
     for t in (0.90, 0.95):
@@ -42,9 +50,11 @@ def analyze_one(es, rng, thresholds, twonn_discard, with_mle,
             row[f"shuffle_pca_n{int(round(t * 100))}"] = prof_sh.n_components[t]
     row["shuffle_twonn"] = round(estimators.twonn(Xsh, twonn_discard), 2)
 
+    # Control 2: isotropic unit-sphere points with the same N and ambient dimension.
     Xr = controls.random_on_sphere(es.n, es.ambient, rng)
     row["random_twonn"] = round(estimators.twonn(Xr, twonn_discard), 2)
 
+    # Control 3: covariance-matched Gaussian draws, L2-normalized only if all input rows are unit-norm.
     cov_rng = rng if covariance_rng is None else covariance_rng
     normalize = bool(np.allclose(np.linalg.norm(es.X, axis=1), 1.0,
                                  rtol=1e-5, atol=1e-5))
@@ -79,6 +89,7 @@ def analyze_all(embedding_sets, results_dir, seed=0,
                 twonn_discard=config.TWONN_DISCARD_FRACTION,
                 with_mle=config.WITH_MLE,
                 covariance_repeats=config.COVARIANCE_REPEATS):
+    """Run analyze_one on every embedding set and save tables, covariance-control records and curves."""
     if not isinstance(covariance_repeats, (int, np.integer)) or covariance_repeats < 2:
         raise ValueError("covariance_repeats must be an integer >= 2")
     results_dir = Path(results_dir)
@@ -86,6 +97,7 @@ def analyze_all(embedding_sets, results_dir, seed=0,
 
     rows, curves, covariance_records = [], {}, []
     for es in embedding_sets:
+        # Each model gets the same seed; covariance draws use a separate fixed stream.
         rng = np.random.default_rng(seed)
         print(f"Analyzing {es.label} (covariance control: {covariance_repeats} draws)...",
               flush=True)
@@ -115,6 +127,7 @@ def analyze_all(embedding_sets, results_dir, seed=0,
 
 
 def _save_csv(rows, path):
+    """Write rows to CSV; columns are the union of row keys in first-seen order."""
     fields = []
     for r in rows:
         for k in r:
@@ -127,6 +140,7 @@ def _save_csv(rows, path):
 
 
 def print_table(rows):
+    """Print a fixed-width summary of the main result columns."""
     cols = [("model", "model", 22), ("ambient_dim", "amb", 7),
             ("pca_n90", "PCA90", 7), ("pca_n95", "PCA95", 7),
             ("shuffle_pca_n90", "shPCA90", 9), ("shuffle_pca_n95", "shPCA95", 9),

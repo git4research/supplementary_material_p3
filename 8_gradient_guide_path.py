@@ -1,3 +1,11 @@
+"""Utility-guided stochastic trajectories on the kNN graph (Section 2.4 / Appendix F).
+
+Starting from every Collapse/Striving/Conflict sentence, each walk moves only to strictly
+uphill neighbors along a Ridge score direction, sampling by softmax of a utility that trades
+off cosine similarity, score gain, and large jumps. Reports Unity hit rate, Activation/Growth
+passage rates, and terminal tiers. Reads outputs/<model>/embeddings.npy and the kNN adjacency;
+writes a tier-dynamics plot and sample-path CSV to outputs/<model>/gradient_paths_k<k>_euclidean/.
+"""
 from __future__ import annotations
 
 import os
@@ -24,12 +32,14 @@ INDEX_COL = "index"
 LOW_START_TIERS = {"Collapse", "Striving", "Conflict"}
 
 MAX_STEPS = 25
+# Softmax temperature; EPSILON is the minimum score gain for a neighbor to count as uphill.
 TAU = 0.1
 RANDOM_SEED = 1
 RIDGE_ALPHA = 1.0
 EPSILON = 1e-6
 N_SAMPLE_PATHS_TO_SAVE = 265
 
+# Utility weights: lambda_sim (cosine), lambda_delta (score gain), lambda_jump (penalty on gain^2).
 SIM_WEIGHT = 0.9
 DELTA_WEIGHT = 0.8
 JUMP_WEIGHT = 1
@@ -58,6 +68,7 @@ def fit_ridge_energy_direction(
     scores: np.ndarray,
     alpha: float,
 ) -> tuple[np.ndarray, float, np.ndarray]:
+    """Fit Ridge(scores ~ E) on all sentences; return weight vector w, intercept, and in-sample predictions."""
     model = Ridge(alpha=alpha)
     model.fit(E, scores)
 
@@ -79,6 +90,7 @@ def sample_next_node_gradient_guided(
     delta_weight: float = DELTA_WEIGHT,
     jump_weight: float = JUMP_WEIGHT,
 ) -> int:
+    """Sample one step among strictly uphill neighbors; returns `cur` itself if none exist (walk stops)."""
     nbrs = A.indices[A.indptr[cur]:A.indptr[cur + 1]]
     if nbrs.size == 0:
         return cur
@@ -86,6 +98,7 @@ def sample_next_node_gradient_guided(
     cur_vec = E[cur]
     nbr_vecs = E[nbrs]
 
+    # Delta_ij = w . (x_j - x_i): projected score gain of each neighbor.
     deltas = (nbr_vecs - cur_vec) @ w
 
     valid_mask = deltas > eps
@@ -96,14 +109,17 @@ def sample_next_node_gradient_guided(
     valid_vecs = nbr_vecs[valid_mask]
     valid_deltas = deltas[valid_mask]
 
+    # Rows of E are L2-normalized, so the dot product is cosine similarity.
     sims = valid_vecs @ cur_vec
 
+    # U = lambda_sim*cos + lambda_delta*Delta - lambda_jump*Delta^2
     utility = (
         sim_weight * sims
         + delta_weight * valid_deltas
         - jump_weight * (valid_deltas ** 2)
     )
 
+    # Numerically stable softmax(U / tau).
     logits = utility / tau
     logits = logits - np.max(logits)
 
@@ -115,6 +131,7 @@ def sample_next_node_gradient_guided(
 
 
 def summarize_paths(paths: Dict[int, List[int]], df: pd.DataFrame) -> pd.DataFrame:
+    """One row per path: start/end tier and score, length, and whether Unity/Activation/Growth were visited."""
     rows = []
     has_index_col = INDEX_COL in df.columns
     has_score_col = SCORE_COL in df.columns
@@ -150,6 +167,7 @@ def sample_paths_to_df(
     n_samples: int,
     seed: int,
 ) -> pd.DataFrame:
+    """Long-format table (one row per step) for a random subset of paths, with sentences, for inspection."""
     rng = np.random.default_rng(seed)
 
     start_ids = list(paths.keys())
@@ -180,12 +198,14 @@ def sample_paths_to_df(
                 "sentence": str(row[TEXT_COL]) if has_text_col else "",
             })
 
+        # Two blank rows separate consecutive paths in the CSV.
         rows.append({})
         rows.append({})
 
     return pd.DataFrame(rows)
 
 def compute_step_dist_df(paths: Dict[int, List[int]], df: pd.DataFrame) -> pd.DataFrame:
+    """Tier proportions at each step, over the paths still long enough to have that step."""
     rows = []
     for start_id, path in paths.items():
         for step, node_id in enumerate(path):
@@ -286,6 +306,7 @@ def run_single_experiment(df: pd.DataFrame, model: str, k: int) -> None:
     corr = float(np.corrcoef(pred, scores)[0, 1])
     print(f"Ridge score-vs-pred correlation: {corr:.4f}")
 
+    # Advance all walks in lockstep; a walk stops permanently once it has no uphill neighbor.
     paths: Dict[int, List[int]] = {sid: [sid] for sid in start_ids}
     current_nodes: Dict[int, int] = {sid: sid for sid in start_ids}
     stopped: Dict[int, bool] = {sid: False for sid in start_ids}

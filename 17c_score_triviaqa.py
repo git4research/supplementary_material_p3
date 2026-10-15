@@ -1,3 +1,9 @@
+"""Score TriviaQA generations by normalized alias matching (Section 2.5.3, short-form factuality).
+
+A response is correct if a normalized gold alias equals or appears in the normalized response
+(no LLM judge). Writes triviaqa_accuracy.csv per (condition, alpha) and an accuracy plot.
+Usage: python 17c_score_triviaqa.py --model qwen --in factuality_triviaqa.jsonl
+"""
 from __future__ import annotations
 
 import argparse
@@ -10,6 +16,7 @@ from pathlib import Path
 from model_config import add_model_arguments, experiment_from_args, validate_single_experiment
 
 HERE = Path(__file__).parent
+# Conditions that are scored; rows with any other condition are skipped.
 KEEP = {"baseline", "global_ridge", "local_manifold"}
 COND_ORDER = {"baseline": 0, "global_ridge": 1, "local_manifold": 2}
 ALPHAS = [0.1, 0.2, 0.3, 0.5]
@@ -20,6 +27,7 @@ _WS = re.compile(r"\s+")
 
 
 def normalize(s: str) -> str:
+    """SQuAD-style normalization: lowercase, drop articles and punctuation, collapse whitespace."""
     s = (s or "").lower().replace("’", "'")
     s = _ARTICLES.sub(" ", s)
     s = "".join(ch for ch in s if ch not in string.punctuation)
@@ -27,6 +35,7 @@ def normalize(s: str) -> str:
 
 
 def em_hit(response: str, aliases) -> bool:
+    """True if any normalized alias equals, or is a substring of, the normalized response."""
     r = normalize(response)
     if not r:
         return False
@@ -53,6 +62,7 @@ def main():
     if not infile.exists():
         raise SystemExit(f"Input not found: {infile}")
 
+    # (condition, alpha) -> [hits, n]
     acc = defaultdict(lambda: [0, 0])
     with open(infile) as source:
         rows = [json.loads(line) for line in source if line.strip()]
@@ -67,6 +77,7 @@ def main():
         if em_hit(r.get("response", ""), m.get("aliases") or []):
             acc[key][0] += 1
 
+    # Sort by condition (baseline, global_ridge, local_manifold), then alpha (baseline's None first).
     keys = sorted(acc, key=lambda k: (COND_ORDER.get(k[0], 9), k[0], -1 if k[1] is None else k[1]))
     print(f"\nTriviaQA EM accuracy  ({infile.name})")
     print(f"{'condition':<16}{'alpha':>6}{'hits':>6}{'n':>5}{'acc%':>7}")
@@ -117,6 +128,7 @@ def main():
     ax.set_xlabel(r"$\alpha$ (steering strength)", fontsize=10)
     ax.set_ylabel("TriviaQA EM accuracy (%)", fontsize=10)
     ax.set_xticks(ALPHAS); ax.set_xlim(0.05, 0.56)
+    # Upper y-limit: 1.6 x max(baseline accuracy, 10).
     ax.set_ylim(0, max([v for v in (rate(c, a) for c in ("baseline",) for a in [None]) if v] + [10]) * 1.6)
     ax.set_title("TriviaQA closed-book factuality (exact match)", fontsize=11)
     ax.grid(True, alpha=0.3)

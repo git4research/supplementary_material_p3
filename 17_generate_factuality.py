@@ -1,3 +1,9 @@
+"""Generate steered responses for the factuality evaluations (Section 2.5.3).
+
+--task longform (used in the paper) reads longform_factuality_prompts.json; --task simpleqa is a
+legacy SimpleQA subset not used in the paper. Writes factuality_<task>.jsonl for 18_llm_judge.py.
+Usage: python 17_generate_factuality.py --model qwen --task longform --n-samples 2
+"""
 from __future__ import annotations
 
 import argparse
@@ -12,12 +18,14 @@ from typing import Dict, List
 from model_config import add_model_arguments, experiment_from_args, generation_kwargs
 
 
+# Load the shared generation interface from 15_generate_with_steering.py (its name starts with a digit, so it cannot be imported normally).
 _HERE = Path(__file__).parent
 _spec = importlib.util.spec_from_file_location("gen_iface", _HERE / "15_generate_with_steering.py")
 _gen = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_gen)
 
 
+# Legacy SimpleQA task (not used in the paper).
 SIMPLEQA_URL = "https://openaipublic.blob.core.windows.net/simple-evals/simple_qa_test_set.csv"
 SIMPLEQA_CACHE = _HERE / "simpleqa_test_set.csv"
 
@@ -27,10 +35,12 @@ SIMPLEQA_N_FULL  = 100
 SIMPLEQA_N_SMALL = 5
 SIMPLEQA_SEED    = 0
 
+# Prompt ids used by --small preview mode for the long-form task.
 LONGFORM_SMALL_IDS = ["LF001", "LF008", "LF013", "LF018", "LF024"]
 
 
 def download_simpleqa(cache_path: Path = SIMPLEQA_CACHE) -> Path:
+    """Download the SimpleQA test CSV once and return the cached path."""
     if cache_path.exists():
         return cache_path
     print(f"Downloading SimpleQA from {SIMPLEQA_URL} ...")
@@ -43,6 +53,7 @@ def download_simpleqa(cache_path: Path = SIMPLEQA_CACHE) -> Path:
 
 
 def load_simpleqa_subset(n: int, seed: int, cache_path: Path = SIMPLEQA_CACHE) -> List[Dict]:
+    """Sample n SimpleQA questions with a fixed seed; the gold answer is stored in metadata."""
     csv_path = download_simpleqa(cache_path)
     with open(csv_path, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -73,6 +84,7 @@ def load_simpleqa_subset(n: int, seed: int, cache_path: Path = SIMPLEQA_CACHE) -
 
 
 def load_longform_prompts(small: bool) -> List[Dict]:
+    """Load all long-form prompts, or only the five preview ids when small=True."""
     if not LONGFORM_PROMPTS.exists():
         raise FileNotFoundError(f"Missing long-form prompts: {LONGFORM_PROMPTS}")
     with open(LONGFORM_PROMPTS) as f:
@@ -87,6 +99,7 @@ def load_longform_prompts(small: bool) -> List[Dict]:
 
 
 def _print_small_summary(jsonl_path: Path, task: str, prompts: List[Dict]):
+    """Print --small responses grouped by prompt (long-form responses truncated to 400 chars)."""
     with open(jsonl_path) as f:
         rows = [json.loads(line) for line in f if line.strip()]
     meta_by_id = {p["id"]: p.get("metadata", {}) for p in prompts}
@@ -176,6 +189,7 @@ def main():
     out_path = Path(args.out) if args.out else default_out
     max_new_tokens = args.max_new_tokens if args.max_new_tokens is not None else default_max_new
 
+    # Baseline is generated once (no alpha); each steered condition once per alpha.
     n_steered = sum(condition != "baseline" for condition in conditions)
     n_combos = int("baseline" in conditions) + n_steered * len(alphas)
     n_gens = len(prompts) * n_combos * n_samples

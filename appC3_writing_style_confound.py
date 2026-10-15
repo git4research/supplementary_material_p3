@@ -1,3 +1,10 @@
+"""Writing-style confound removal test (Appendix C.3).
+
+Same projection-removal procedure as appC1_confound_directions.py, applied to surface style
+features: sentence length (tokens), first-person pronoun density, and whether the sentence opens
+with a first-person subject. Reads the dataset CSV and outputs/<model>/embeddings.npy; prints
+per-confound and combined score-R^2 drops vs a matched random-direction control (no file output).
+"""
 from __future__ import annotations
 
 import re
@@ -32,6 +39,7 @@ def compute_sent_length(sentences):
 
 
 def compute_fp_density(sentences):
+    # Fraction of tokens that are first-person pronouns.
     out = []
     for s in sentences:
         toks = _tokenize(s)
@@ -41,6 +49,7 @@ def compute_fp_density(sentences):
 
 
 def compute_fp_subject(sentences):
+    # 1.0 if the first token is a first-person subject form (e.g. "I", "I'm", "we"), else 0.0.
     out = []
     for s in sentences:
         toks = _tokenize(s)
@@ -68,6 +77,7 @@ def l2_normalize_rows(x, eps=1e-12):
 
 
 def fit_direction(E: np.ndarray, y: np.ndarray, alpha: float = RIDGE_ALPHA):
+    """Fit Ridge(y ~ E); return the unit-norm coefficient direction and in-sample R^2."""
     model = Ridge(alpha=alpha)
     model.fit(E, y)
     w = model.coef_.astype(float)
@@ -87,6 +97,7 @@ def holdout_r2(E: np.ndarray, y: np.ndarray, n_splits: int = N_HOLDOUT_SPLITS,
 
 
 def orthogonalize(E: np.ndarray, directions: list[np.ndarray]) -> np.ndarray:
+    """Project out the span of `directions` (via QR basis) from every row, then re-normalize rows."""
     D = np.stack(directions, axis=1)
     Q, _ = np.linalg.qr(D)
     E_c = E - E @ Q @ Q.T
@@ -95,6 +106,7 @@ def orthogonalize(E: np.ndarray, directions: list[np.ndarray]) -> np.ndarray:
 
 def random_direction_drop(E: np.ndarray, y: np.ndarray, w_score: float, r2_score: float,
                             n_directions: int, n_trials: int = N_RANDOM_TRIALS, seed: int = SEED) -> tuple[float, float]:
+    """Control: mean/std of the score-R^2 drop after removing n_directions random unit directions (n_trials draws)."""
     rng = np.random.default_rng(seed)
     drops = []
     for _ in range(n_trials):
@@ -134,6 +146,7 @@ def run_for_model(model: str, sentences: list[str], y_score: np.ndarray,
 
         cos_sim = float(np.dot(w_conf, w_score))
 
+        # Remove this confound's direction, refit the score regression, and record the R^2 drop.
         E_orth = orthogonalize(E, [w_conf])
         _, r2_after = fit_direction(E_orth, y_score)
         drop = r2_score_in - r2_after
@@ -154,6 +167,7 @@ def run_for_model(model: str, sentences: list[str], y_score: np.ndarray,
 
     individual_df = pd.DataFrame(rows)
 
+    # Remove all style directions jointly; control with the same number of random directions.
     combined_result = None
     if len(confound_dirs) >= 1:
         all_dirs = list(confound_dirs.values())

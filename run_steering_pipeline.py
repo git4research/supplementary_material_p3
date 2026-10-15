@@ -1,3 +1,10 @@
+"""Run the steering pipeline for one model: scripts 11 -> 12 -> 13, then generation (Section 2.5).
+
+--prepare runs activation extraction (11), layer selection (12; skipped if --layer is given) and
+artifact building (13); --refine-layers repeats 11-13 on a finer grid under OUTPUT_ROOT/refinement.
+Generation runs script 15 (--task smoke) or the task scripts 16, 17, or 17b + 17c.
+Example: python run_steering_pipeline.py --model qwen --prepare --task smoke
+"""
 import argparse
 import os
 from pathlib import Path
@@ -59,10 +66,12 @@ def main():
         elif args.layer is not None:
             extraction.extend(["--layers", args.layer])
         run_script("11_get_llm_activations.py", extraction)
+        # With a fixed --layer, layer selection is skipped and that layer is used directly.
         if args.layer is None:
             run_script("12_select_steering_layer.py", common)
         run_script("13_build_steering_vectors.py", [*common, *selected])
         if args.refine_layers:
+            # Refinement writes to a separate output root so the coarse sweep and its selection are preserved.
             spec = get_model_spec(args.model_id, args.model_key)
             source_selection = Path(args.output_root) / spec.key / "layer_selection/chosen_layer.json"
             args.output_root = str(Path(args.output_root) / "refinement")
@@ -76,6 +85,7 @@ def main():
             run_script("13_build_steering_vectors.py", common)
     if args.prepare_only:
         return
+    # Resolve the steering layer: explicit --layer, else the script 12 selection under the current output root.
     config = experiment_from_args(args)
     generation = [*common, *runtime, "--layer", config.layer, "--conditions", args.conditions]
     for option in ("max_new_tokens", "n_samples", "temperature", "out"):

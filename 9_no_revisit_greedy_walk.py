@@ -1,3 +1,10 @@
+"""Geometry-only "transition corridor" baseline: no-revisit greedy walk (Section 3.3.1 / Appendix F.5-F.6).
+
+From every Collapse/Striving/Conflict sentence, repeatedly step to the most cosine-similar
+unvisited kNN neighbor (no score guidance), stopping at the first Unity node or a dead end.
+Reports Hit@Unity and P(passed Activation/Growth | hit Unity). Reads outputs/<model>/embeddings.npy
+and the kNN adjacency; writes per-run plots/CSVs and outputs/greedy_transition_corridor_all_models.csv.
+"""
 from __future__ import annotations
 
 import os
@@ -40,6 +47,7 @@ def l2_normalize_rows(x: np.ndarray, eps: float = 1e-12) -> np.ndarray:
 
 
 def cosine_sim_vector(E: np.ndarray, i: int, nbrs: list[int] | np.ndarray) -> np.ndarray:
+    # Cosine similarity of node i to each neighbor (assumes rows of E are L2-normalized).
     nbrs = np.asarray(nbrs, dtype=int)
     return E[nbrs] @ E[i]
 
@@ -48,6 +56,7 @@ def build_step_distribution(
     end_tiers_by_step: list[list[str]],
     tier_order: list[str],
 ) -> pd.DataFrame:
+    """Tier proportions of all walkers' current nodes at each step (stopped walkers keep their last node)."""
     rows = []
 
     for step, end_tiers in enumerate(end_tiers_by_step, start=1):
@@ -131,6 +140,7 @@ def run_single_experiment(df: pd.DataFrame, model: str, k: int) -> pd.DataFrame:
     E = l2_normalize_rows(np.load(embed_path))
     A = sparse.load_npz(graph_path).tocsr()
 
+    # Sanity-check printout of graph degree statistics and a few neighbor lists.
     print("\n--- Graph Debug Info ---")
     print("Graph path:", graph_path)
     print("Graph nnz:", A.nnz)
@@ -185,6 +195,7 @@ def run_single_experiment(df: pd.DataFrame, model: str, k: int) -> pd.DataFrame:
                 new_nodes[sid] = cur
                 continue
 
+            # Candidate moves: graph neighbors this walker has not visited yet.
             nbrs = A.indices[A.indptr[cur]:A.indptr[cur + 1]]
             nbrs = [int(n) for n in nbrs if int(n) not in visited[sid]]
 
@@ -193,6 +204,7 @@ def run_single_experiment(df: pd.DataFrame, model: str, k: int) -> pd.DataFrame:
                 new_nodes[sid] = cur
                 continue
 
+            # Greedy step: most cosine-similar unvisited neighbor (score is never used).
             sims = cosine_sim_vector(E, cur, nbrs)
             nxt = int(nbrs[int(np.argmax(sims))])
 
@@ -235,6 +247,7 @@ def run_single_experiment(df: pd.DataFrame, model: str, k: int) -> pd.DataFrame:
     hit_unity = float(path_summary_df["hit_unity"].mean())
     mean_length = float(path_summary_df["path_length"].mean())
 
+    # Passage rates conditioned on paths that reached Unity (NaN if none did).
     unity_paths = path_summary_df[path_summary_df["hit_unity"]]
     if len(unity_paths) > 0:
         p_activation_given_unity = float(unity_paths["passed_activation"].mean())

@@ -1,3 +1,10 @@
+"""Select the steering layer per model from script 11 activations (Section 2.5.1, Appendix M).
+
+Per candidate layer: 5-fold CV Ridge R^2 on scores, logistic-regression tier accuracy, kNN (k=30)
+tier-jump 0/1 rate and tier silhouette; the chosen layer maximizes the weighted sum of min-max
+normalized metrics. Outputs: layer_selection/layer_metrics.csv, chosen_layer.json, layer_metrics.png.
+Example: python 12_select_steering_layer.py --model qwen
+"""
 from __future__ import annotations
 
 import argparse
@@ -42,6 +49,7 @@ TIER_ORDER = [
     "Unity",
 ]
 
+# Composite weights applied to min-max normalized metrics (sum to 1.0).
 WEIGHTS = {
     "ridge_r2": 0.40,
     "logreg_acc": 0.25,
@@ -91,9 +99,11 @@ def logreg_acc_cv(E: np.ndarray, labels: np.ndarray, n_folds: int, seed: int) ->
 
 
 def tts_jump01_rate(E: np.ndarray, tier_idx: np.ndarray, k: int, metric: str) -> float:
+    """Fraction of undirected kNN edges whose endpoints' tiers differ by at most one."""
     nn = NearestNeighbors(n_neighbors=k + 1, metric=metric)
     nn.fit(E)
     _, idx = nn.kneighbors(E)
+    # Drop the first neighbor (each point itself).
     idx = idx[:, 1:]
 
     n = E.shape[0]
@@ -111,6 +121,7 @@ def tts_jump01_rate(E: np.ndarray, tier_idx: np.ndarray, k: int, metric: str) ->
 
 
 def composite_rank(metrics_df: pd.DataFrame, weights: dict) -> pd.Series:
+    """Weighted sum of per-metric min-max normalized values across layers (constant metric -> 0.5)."""
     score = pd.Series(0.0, index=metrics_df.index)
     for col, w in weights.items():
         v = metrics_df[col].astype(float)
@@ -153,6 +164,7 @@ def main():
     else:
         layers = activation_meta["layers_saved"]
     layers = [layer for layer in layers if layer in activation_meta["layers_saved"]]
+    # Legacy (non-block-output) activations: keep only layers below n_hidden_layers.
     if activation_meta.get("activation_space") != "block_output":
         layers = [layer for layer in layers if layer < activation_meta["n_hidden_layers"]]
     layers = sorted(set(layers))

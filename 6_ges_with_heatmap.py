@@ -1,3 +1,10 @@
+"""Geodesic-Euclidean Stretch (GES) on precomputed kNN graphs, with tier-pair heatmaps (Sections 2.2-2.3, 3.2).
+
+For each model and k, samples 200 sentence pairs per ordered tier pair and takes the ratio of the weighted
+shortest-path length on the kNN graph to the Euclidean distance between the embeddings. Reads
+outputs/<model>/embeddings.npy and knn_k<k>_euclidean/adjacency_csr.npz; writes ges_tierpair_long.csv,
+ges_heatmap.csv, ges_summary.csv and a heatmap PNG per k, plus outputs/<model>/ges_summary_all_k_euclidean.csv.
+"""
 from __future__ import annotations
 
 import os
@@ -19,6 +26,7 @@ GRAPH_METRIC_NAME = "euclidean"
 
 TIER_ORDER = ["Collapse", "Striving", "Conflict", "Activation", "Growth", "Clarity", "Unity"]
 
+# Random pairs sampled for each ordered (source tier, target tier) combination.
 PAIRS_PER_TIERPAIR = 200
 RANDOM_SEED = 123
 EPS = 1e-12
@@ -29,6 +37,7 @@ ANNOT_DECIMALS = 2
 
 
 def sample_pairs(rng: np.random.Generator, idx_a: np.ndarray, idx_b: np.ndarray, m: int):
+    """Draw m (i, j) pairs with replacement, i from idx_a and j from idx_b; i != j when the groups coincide."""
     if len(idx_a) == 0 or len(idx_b) == 0:
         return []
 
@@ -57,6 +66,7 @@ def plot_heatmap_with_values(
     cmap: str = HEATMAP_CMAP,
     decimals: int = ANNOT_DECIMALS,
 ) -> None:
+    """Plot a tier-pair GES heatmap with per-cell values on a fixed colour range."""
     values = heatmap_df.to_numpy(dtype=float)
 
     fig, ax = plt.subplots(figsize=(8, 6))
@@ -108,6 +118,7 @@ def compute_ges_for_k(
     k: int,
     base_seed: int,
 ):
+    """GES for one (model, k): per-tier-pair and overall stretch statistics; None if the graph is missing."""
     graph_dir = os.path.join(OUTPUT_ROOT, model, f"knn_k{k}_{GRAPH_METRIC_NAME}")
     graph_path = os.path.join(graph_dir, GRAPH_FILENAME)
 
@@ -115,6 +126,7 @@ def compute_ges_for_k(
         print(f"[Skip] Graph not found for model={model}, k={k}: {graph_path}")
         return None
 
+    # Separate, reproducible pair sample for each k.
     rng = np.random.default_rng(base_seed + k)
 
     A = sparse.load_npz(graph_path)
@@ -126,6 +138,7 @@ def compute_ges_for_k(
         )
 
     print(f"Computing shortest paths for model={model}, k={k} ...")
+    # All-pairs weighted geodesic distances; inf for pairs in different components.
     distG = shortest_path(A, directed=False, unweighted=False)
 
     tiers_as_str = df["tier"].astype(str)
@@ -146,9 +159,11 @@ def compute_ges_for_k(
                 total_pairs += 1
                 g = distG[i, j]
 
+                # Skip unreachable pairs and zero-distance pairs; reachable_ratio = pairs used / pairs sampled.
                 if not np.isfinite(g):
                     continue
 
+                # Euclidean distance on the embeddings as loaded; they are already unit-norm (script 1 saves L2-normalized vectors).
                 e = float(np.linalg.norm(E[i] - E[j]))
                 if e < EPS:
                     continue
@@ -242,6 +257,7 @@ def main():
             print(f"No valid k results were produced for model={model}.")
             continue
 
+        # One colour scale shared across all k for this model, so its heatmaps are comparable.
         all_heatmap_values = []
         for result in results:
             vals = result["heatmap_df"].to_numpy(dtype=float)

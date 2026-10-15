@@ -1,3 +1,10 @@
+"""Tier Transition Smoothness (TTS) on precomputed kNN graphs (Sections 2.2-2.3, 3.2).
+
+An edge's jump is the absolute difference in ordinal tier index of its endpoints. Reports the
+distribution of jumps over all edges and, per tier, the fraction of edges with jump 0, 1, 2, > 2.
+Reads the dataset CSV and outputs/<model>/knn_k<k>_euclidean/adjacency_csr.npz (from 3_build_knn.py);
+writes tts_overall.csv and tts_by_tier.csv to the same directory.
+"""
 from __future__ import annotations
 
 import os
@@ -23,6 +30,7 @@ TIER_TO_IDX = {t: i for i, t in enumerate(TIER_ORDER)}
 
 
 def compute_tts_for_graph(df: pd.DataFrame, graph_path: str):
+    """Return (overall jump-size distribution, per-tier jump fractions) for one graph."""
     if "tier" not in df.columns:
         raise ValueError("CSV must contain 'tier' column")
 
@@ -45,6 +53,7 @@ def compute_tts_for_graph(df: pd.DataFrame, graph_path: str):
     jump_counts = defaultdict(int)
     jump_counts_by_tier = {t: defaultdict(int) for t in TIER_ORDER}
 
+    # The symmetric adjacency stores each edge twice; count it once (i < j).
     for i, j in zip(Acoo.row, Acoo.col):
         if i >= j:
             continue
@@ -54,6 +63,7 @@ def compute_tts_for_graph(df: pd.DataFrame, graph_path: str):
         jump = abs(int(ti - tj))
 
         jump_counts[jump] += 1
+        # Per-tier counts are edge incidents: an edge counts for both endpoints' tiers (twice if same tier).
         jump_counts_by_tier[tiers[i]][jump] += 1
         jump_counts_by_tier[tiers[j]][jump] += 1
 

@@ -1,3 +1,10 @@
+"""Command-line entry point for the manifold-structure study (Appendix D and G).
+
+Loads all embedding sets, computes PCA / participation-ratio / intrinsic-dimension
+diagnostics with reference controls, runs the sampling-scale (decimation) test and
+optional synthetic validation, and writes tables and figures to the results directory.
+Usage: python run.py --embeddings-dir all_embeddings --results-dir results
+"""
 from __future__ import annotations
 
 import argparse
@@ -11,6 +18,7 @@ import validate
 
 
 def _parse_args():
+    """Parse command-line options; defaults come from config.py."""
     p = argparse.ArgumentParser(description="Manifold-structure study (PCA vs intrinsic dim).")
     p.add_argument("--embeddings-dir", type=Path, default=config.EMBEDDINGS_DIR,
                    help="directory of *.npy embedding files")
@@ -51,6 +59,7 @@ def main():
         validate.run(seed=args.seed, with_mle=args.with_mle, results_dir=args.results_dir)
         return
 
+    # Fall back to no MLE when scikit-dimension is not installed.
     with_mle = args.with_mle
     if with_mle:
         try:
@@ -78,6 +87,7 @@ def main():
         paths = figures.make_cumvar_figure(curves, args.results_dir)
         print("Figure -> " + ", ".join(str(p) for p in paths))
 
+    # Sampling-scale sensitivity: ID on random subsets of increasing size.
     if args.decimation:
         import decimation
         est = args.decimation_estimator

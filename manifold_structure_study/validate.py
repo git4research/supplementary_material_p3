@@ -1,3 +1,9 @@
+"""Synthetic sanity checks for the intrinsic-dimension estimators (Appendix D and G).
+
+Runs TwoNN (and optionally MLE) on point clouds with known dimension, prints a
+table, asserts low-dimensional recovery, and can write validation.csv.
+Usage: python validate.py
+"""
 from __future__ import annotations
 
 import csv
@@ -10,21 +16,25 @@ import estimators
 
 
 def _sphere(n, d, rng):
+    """Uniform samples on the d-sphere S^d in R^(d+1)."""
     G = rng.standard_normal((n, d + 1))
     return G / np.linalg.norm(G, axis=1, keepdims=True)
 
 
 def _hypercube(n, d, rng):
+    """Uniform samples in the flat unit cube [0, 1]^d."""
     return rng.uniform(0.0, 1.0, (n, d))
 
 
 def _linear_highdim(n, d, ambient, rng):
+    """d-dim uniform latent mapped linearly into R^ambient, then projected onto the unit sphere."""
     z = rng.uniform(0.0, 1.0, (n, d))
     X = z @ rng.standard_normal((d, ambient))
     return X / np.linalg.norm(X, axis=1, keepdims=True)
 
 
 def _curved_highdim(n, d, ambient, rng, scale=0.6):
+    """d-dim uniform latent mapped through random sin/cos features into R^ambient, then unit-normalized."""
     z = rng.uniform(0.0, 1.0, (n, d))
     proj = z @ (rng.standard_normal((d, ambient // 2)) * scale)
     X = np.concatenate([np.sin(proj), np.cos(proj)], axis=1)
@@ -32,6 +42,7 @@ def _curved_highdim(n, d, ambient, rng, scale=0.6):
 
 
 def build_cases(n=635, seed=0):
+    """Return (name, points, true dimension) for each synthetic test case."""
     rng = np.random.default_rng(seed)
     return [
         ("Swiss roll",            make_swiss_roll(n, noise=0.0, random_state=seed)[0], 2),
@@ -43,6 +54,7 @@ def build_cases(n=635, seed=0):
 
 
 def run(n=635, seed=0, with_mle=True, results_dir=None, twonn_discard=0.10):
+    """Estimate ID on each case, print a table, run sanity checks, and optionally write validation.csv."""
     cases = build_cases(n=n, seed=seed)
     rows = []
     for label, X, true_d in cases:
@@ -52,6 +64,7 @@ def run(n=635, seed=0, with_mle=True, results_dir=None, twonn_discard=0.10):
             try:
                 row["mle"] = round(estimators.mle(X), 2)
             except ImportError:
+                # scikit-dimension not installed: skip MLE for the remaining cases.
                 with_mle = False
         rows.append(row)
 
@@ -81,6 +94,7 @@ def run(n=635, seed=0, with_mle=True, results_dir=None, twonn_discard=0.10):
 
 
 def _sane(rows):
+    """Raise if TwoNN misses the Swiss roll or 4-sphere dimension by more than loose bounds."""
     lookup = {r["manifold"]: r for r in rows}
     checks = [("Swiss roll", 1.3, 2.8), ("Sphere S^4 (R^5)", 3.0, 4.8)]
     for name, lo, hi in checks:

@@ -1,3 +1,10 @@
+"""Compare the two valence measures, VADER vs NRC-VAD (Appendix C.1).
+
+For each embedding space, fits a Ridge direction for each valence score, reports their cosine,
+in-sample and held-out R^2, and cross-removal (R^2 of one measure after projecting out the
+other's direction). Reads the dataset CSV, the NRC-VAD lexicon and outputs/<model>/embeddings.npy;
+writes outputs/valence_vader_vs_nrcvad_comparison.csv.
+"""
 from __future__ import annotations
 
 import os
@@ -30,6 +37,7 @@ def compute_valence_vader(sentences):
 
 
 def compute_valence_nrcvad(sentences, path):
+    # Mean NRC-VAD valence over lexicon words in the sentence (0.0 if none match).
     lex = pd.read_csv(path, sep="\t", header=0, names=["word", "valence", "arousal", "dominance"])
     vad = dict(zip(lex["word"].str.lower(), lex["valence"]))
     out = []
@@ -46,6 +54,7 @@ def l2_normalize_rows(x, eps=1e-12):
 
 
 def fit_direction(E: np.ndarray, y: np.ndarray, alpha: float = RIDGE_ALPHA):
+    """Fit Ridge(y ~ E); return the unit-norm coefficient direction and in-sample R^2."""
     model = Ridge(alpha=alpha)
     model.fit(E, y)
     w = model.coef_.astype(float)
@@ -56,6 +65,7 @@ def fit_direction(E: np.ndarray, y: np.ndarray, alpha: float = RIDGE_ALPHA):
 
 def holdout_r2(E: np.ndarray, y: np.ndarray, n_splits: int = N_HOLDOUT_SPLITS,
                test_size: float = TEST_SIZE, alpha: float = RIDGE_ALPHA, seed: int = SEED) -> float:
+    """Mean test R^2 of Ridge over n_splits random train/test splits."""
     scores = []
     for i in range(n_splits):
         Xtr, Xte, ytr, yte = train_test_split(E, y, test_size=test_size, random_state=seed + i)
@@ -65,6 +75,7 @@ def holdout_r2(E: np.ndarray, y: np.ndarray, n_splits: int = N_HOLDOUT_SPLITS,
 
 
 def remove_direction(E: np.ndarray, w_hat: np.ndarray) -> np.ndarray:
+    """Project out unit direction w_hat from every row, then re-normalize rows."""
     proj = E @ w_hat
     E_abl = E - np.outer(proj, w_hat)
     return l2_normalize_rows(E_abl)
@@ -81,6 +92,7 @@ def run_for_model(model: str, E_raw: np.ndarray, y_vader: np.ndarray, y_nrcvad: 
 
     cosine = float(np.dot(w_vader, w_nrcvad))
 
+    # Cross-removal: decode each valence measure after removing the other's direction.
     E_minus_nrcvad = remove_direction(E, w_nrcvad)
     _, r2_vader_after_removing_nrcvad = fit_direction(E_minus_nrcvad, y_vader)
 

@@ -1,3 +1,10 @@
+"""Held-out score-direction ablation probe for the encoders and Qwen2.5-3B L24 (Sections 2.1, 3.1 / Appendix E).
+
+Over 30 random 80/20 splits, fits a unit Ridge score direction on the training split, projects it out
+of train and test embeddings, and compares Ridge/MLP test R^2 and MSE against the original embeddings
+and a permuted-label direction control. Reads outputs/<model>/embeddings.npy and the dataset CSV;
+writes outputs/ablation_probe/energy_ablation_probe_{summary,all_splits}.csv.
+"""
 import os
 import numpy as np
 import pandas as pd
@@ -21,6 +28,7 @@ N_SPLITS = 30
 TEST_SIZE = 0.2
 BASE_SEED = 123
 
+# If True, rows are re-normalized to unit length after the direction is removed.
 RENORMALIZE_AFTER_ABLATION = False
 
 
@@ -50,12 +58,14 @@ def l2_normalize_rows(X: np.ndarray, eps: float = 1e-12) -> np.ndarray:
 
 
 def fit_direction(X_train: np.ndarray, y_train: np.ndarray) -> np.ndarray:
+    """Unit-norm Ridge coefficient vector, i.e. the linear score direction."""
     model = Ridge(alpha=RIDGE_ALPHA)
     model.fit(X_train, y_train)
     return unit_norm(model.coef_)
 
 
 def remove_direction(X: np.ndarray, w: np.ndarray) -> np.ndarray:
+    """Project each row of X onto the orthogonal complement of the unit vector w."""
     proj = X @ w
     X_abl = X - np.outer(proj, w)
 
@@ -99,6 +109,7 @@ def summarize(values):
 
 
 def run_for_model(df: pd.DataFrame, model_name: str) -> dict:
+    """Run all splits and conditions for one model; return (summary dict, per-split DataFrame)."""
     print(f"\n==================== {model_name} ====================")
 
     X = np.load(get_embedding_path(model_name)).astype(np.float64)
@@ -127,8 +138,10 @@ def run_for_model(df: pd.DataFrame, model_name: str) -> dict:
         y_train = y[train_idx]
         y_test = y[test_idx]
 
+        # Score ("energy") direction fit on the training split only (held-out protocol).
         w_energy = fit_direction(X_train, y_train)
 
+        # Control: direction fit to permuted training scores, ablated the same way.
         rng = np.random.default_rng(seed)
         y_train_perm = rng.permutation(y_train)
         w_perm = fit_direction(X_train, y_train_perm)
@@ -145,6 +158,7 @@ def run_for_model(df: pd.DataFrame, model_name: str) -> dict:
             ),
         }
 
+        # Probes are retrained from scratch on each (possibly ablated) representation.
         for condition, (Xtr_cur, Xte_cur) in conditions.items():
             ridge_metrics = eval_ridge(Xtr_cur, Xte_cur, y_train, y_test)
             mlp_metrics = eval_mlp(Xtr_cur, Xte_cur, y_train, y_test, seed)
@@ -171,6 +185,7 @@ def run_for_model(df: pd.DataFrame, model_name: str) -> dict:
             summary[f"{condition}_{metric}_mean"] = mean
             summary[f"{condition}_{metric}_std"] = std
 
+    # Paired per-split deltas, original minus ablated (a positive R^2 delta means a drop).
     pivot = df_long.pivot(index="split", columns="condition")
 
     for ablated in ["energy_ablated", "perm_ablated"]:

@@ -1,3 +1,10 @@
+"""Geodesic containment ("convexity") of each tier on precomputed kNN graphs (Sections 2.2-2.3, 3.2).
+
+For random pairs of sentences in the same tier, finds the weighted shortest path on the kNN graph and
+measures the fraction of path nodes (endpoints included) that belong to that tier; 400 pairs per tier,
+repeated over 40 seeds. Reads the dataset CSV and outputs/<model>/knn_k<k>_euclidean/adjacency_csr.npz;
+writes per-seed, aggregated and per-pair CSVs to outputs/<model>/convex_k<k>_euclidean/.
+"""
 from __future__ import annotations
 
 import os
@@ -20,6 +27,7 @@ GRAPH_FILENAME = "adjacency_csr.npz"
 
 OUTPUT_ROOT = "outputs"
 
+# Pairs per tier per seed; tiers with fewer than MIN_TIER_SIZE sentences get NaN.
 PAIRS_PER_TIER = 400
 MIN_TIER_SIZE = 5
 
@@ -46,12 +54,14 @@ def load_graph(path: str) -> sparse.csr_matrix:
 
 
 def reconstruct_path(pred: np.ndarray, src: int, dst: int) -> List[int]:
+    """Walk the Dijkstra predecessor array back from dst to src; [] if dst is unreachable."""
     if src == dst:
         return [src]
 
     path: List[int] = []
     cur = int(dst)
 
+    # -9999 is SciPy's predecessor value for 'no predecessor' (unreachable).
     while cur != src and cur != -9999:
         path.append(cur)
         cur = int(pred[cur])
@@ -65,6 +75,7 @@ def reconstruct_path(pred: np.ndarray, src: int, dst: int) -> List[int]:
 
 
 def sample_pairs(idx: np.ndarray, n_pairs: int, rng: np.random.Generator) -> List[Tuple[int, int]]:
+    """n_pairs pairs of distinct nodes from idx (pairs drawn independently, with replacement)."""
     if idx.size < 2:
         return []
 
@@ -80,7 +91,9 @@ def compute_all_tier_containment_for_seed(
     A: sparse.csr_matrix,
     seed: int,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Containment per tier (summary rows) and per sampled pair (sample rows) for one seed."""
     rng = np.random.default_rng(seed)
+    # Dijkstra predecessor arrays, cached per source node within this seed.
     pred_cache: dict[int, np.ndarray] = {}
 
     summary_rows = []
@@ -117,6 +130,7 @@ def compute_all_tier_containment_for_seed(
 
             path = reconstruct_path(pred_cache[src], src, dst)
 
+            # An unreachable pair counts as containment 0.
             if not path:
                 cont = 0.0
                 path_len = 0
@@ -149,6 +163,7 @@ def compute_all_tier_containment_for_seed(
                 "pairs": int(len(pairs)),
                 "containment_mean": float(np.mean(scores_arr)) if scores_arr.size > 0 else np.nan,
                 "containment_median": float(np.median(scores_arr)) if scores_arr.size > 0 else np.nan,
+                # Fraction of paths that lie entirely inside the tier.
                 "full_containment_rate": float(np.mean(np.isclose(scores_arr, 1.0))) if scores_arr.size > 0 else np.nan,
             }
         )
@@ -159,6 +174,7 @@ def compute_all_tier_containment_for_seed(
 
 
 def aggregate_across_seeds(per_seed_summary: pd.DataFrame) -> pd.DataFrame:
+    """Mean/std/median of the per-seed containment statistics for each tier."""
     grouped = per_seed_summary.groupby("tier", dropna=False)
 
     agg_df = grouped.agg(

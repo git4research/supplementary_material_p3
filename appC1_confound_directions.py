@@ -1,3 +1,11 @@
+"""Semantic-confound removal test (Appendix C.1).
+
+Scores each sentence for valence (VADER, NRC-VAD), abstraction (Brysbaert concreteness) and
+formality (RoBERTa formality ranker), fits a Ridge direction per confound in each embedding space,
+projects those directions out, and measures how much in-sample score R^2 is lost, compared with
+removing the same number of random directions. Reads the dataset CSV, outputs/<model>/embeddings.npy
+and the lexicon files; writes outputs/confound_analysis_summary.csv.
+"""
 from __future__ import annotations
 
 import os
@@ -27,12 +35,14 @@ USE_FORMALITY_CLASSIFIER = True
 
 
 def compute_valence_vader(sentences):
+    # VADER compound polarity in [-1, 1].
     from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
     sia = SentimentIntensityAnalyzer()
     return np.array([sia.polarity_scores(s)["compound"] for s in sentences])
 
 
 def compute_valence_nrcvad(sentences, path):
+    # Mean NRC-VAD valence over lexicon words in the sentence (0.0 if none match).
     lex = pd.read_csv(path, sep="\t", header=0, names=["word", "valence", "arousal", "dominance"])
     vad = dict(zip(lex["word"].str.lower(), lex["valence"]))
     out = []
@@ -44,6 +54,7 @@ def compute_valence_nrcvad(sentences, path):
 
 
 def compute_abstraction_brysbaert(sentences, path):
+    # Abstraction = 5 - mean concreteness (Brysbaert 1-5 scale) of matched words; 2.5 if none match.
     lex = pd.read_csv(path)
     conc = dict(zip(lex["Word"].str.lower(), lex["Conc.M"]))
     scores = []
@@ -55,6 +66,7 @@ def compute_abstraction_brysbaert(sentences, path):
 
 
 def compute_formality_classifier(sentences):
+    # Classifier probability of the "formal" label for each sentence.
     from transformers import pipeline
     clf = pipeline("text-classification", model="s-nlp/roberta-base-formality-ranker",
                     top_k=None, truncation=True)
@@ -67,6 +79,7 @@ def compute_formality_classifier(sentences):
 
 
 def get_confound_scores(sentences):
+    """Compute every available confound score; any confound whose dependency or file is missing is skipped."""
     confounds = {}
 
     try:
@@ -118,6 +131,7 @@ def l2_normalize_rows(x, eps=1e-12):
 
 
 def fit_direction(E: np.ndarray, y: np.ndarray, alpha: float = RIDGE_ALPHA):
+    """Fit Ridge(y ~ E); return the unit-norm coefficient direction and in-sample R^2."""
     model = Ridge(alpha=alpha)
     model.fit(E, y)
     w = model.coef_.astype(float)
@@ -128,6 +142,7 @@ def fit_direction(E: np.ndarray, y: np.ndarray, alpha: float = RIDGE_ALPHA):
 
 def holdout_r2(E: np.ndarray, y: np.ndarray, n_splits: int = N_HOLDOUT_SPLITS,
                test_size: float = TEST_SIZE, alpha: float = RIDGE_ALPHA, seed: int = SEED) -> float:
+    """Mean test R^2 of Ridge over n_splits random train/test splits."""
     scores = []
     for i in range(n_splits):
         Xtr, Xte, ytr, yte = train_test_split(E, y, test_size=test_size, random_state=seed + i)
@@ -137,6 +152,7 @@ def holdout_r2(E: np.ndarray, y: np.ndarray, n_splits: int = N_HOLDOUT_SPLITS,
 
 
 def orthogonalize(E: np.ndarray, directions: list[np.ndarray]) -> np.ndarray:
+    """Project out the span of `directions` (via QR basis) from every row, then re-normalize rows."""
     D = np.stack(directions, axis=1)
     Q, _ = np.linalg.qr(D)
     E_c = E - E @ Q @ Q.T
@@ -145,6 +161,7 @@ def orthogonalize(E: np.ndarray, directions: list[np.ndarray]) -> np.ndarray:
 
 def random_direction_drop(E: np.ndarray, y: np.ndarray, w_score: float, r2_score: float,
                             n_directions: int, n_trials: int = 20, seed: int = SEED) -> tuple[float, float]:
+    """Control: mean/std of the score-R^2 drop after removing n_directions random unit directions (n_trials draws)."""
     rng = np.random.default_rng(seed)
     drops = []
     for _ in range(n_trials):
@@ -183,6 +200,7 @@ def run_for_model(model: str, sentences: list[str], y_score: np.ndarray,
 
         cos_sim = float(np.dot(w_conf, w_score))
 
+        # Remove this confound's direction, refit the score regression, and record the R^2 drop.
         E_orth = orthogonalize(E, [w_conf])
         _, r2_after = fit_direction(E_orth, y_score)
         drop = r2_score_in - r2_after
@@ -198,11 +216,13 @@ def run_for_model(model: str, sentences: list[str], y_score: np.ndarray,
             "score_R2_drop": round(drop, 4),
             "random_dir_drop_mean": round(rand_mean, 4),
             "random_dir_drop_std": round(rand_std, 4),
+            # Confound drop expressed in units of the random-control std.
             "drop_vs_random_ratio": round(drop / rand_std, 1) if rand_std > 1e-8 else float("inf"),
         })
 
     individual_df = pd.DataFrame(rows)
 
+    # Remove all confound directions jointly; control with the same number of random directions.
     combined_result = None
     if len(confound_dirs) >= 1:
         all_dirs = list(confound_dirs.values())

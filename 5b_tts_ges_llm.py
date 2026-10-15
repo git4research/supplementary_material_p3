@@ -1,3 +1,10 @@
+"""kNN graphs, TTS and GES for all ten representations: four encoders and six LLMs (Sections 2.2-2.3, 3.2).
+
+Self-contained counterpart of 3_build_knn.py, 5_tts.py and 6_ges_with_heatmap.py. Reads all_embeddings/*.npy
+and the dataset CSV; writes graphs, TTS/GES CSVs and heatmaps to <out-dir>/<model>/knn_k<k>_euclidean/, and
+tts_ges_summary.csv plus LaTeX tables to <out-dir> (default outputs/tts_ges_llm/).
+Usage: python 5b_tts_ges_llm.py --group llm --table-k 15 --no-heatmaps
+"""
 from __future__ import annotations
 
 import argparse
@@ -17,6 +24,7 @@ CSV_PATH = os.path.join(HERE, "full_dataset_with_scores_new.csv")
 EMB_DIR = os.path.join(HERE, "all_embeddings")
 DEFAULT_OUT = os.path.join(HERE, "outputs", "tts_ges_llm")
 
+# key -> (embedding file in all_embeddings/, display name, group).
 MODELS = {
     "bge":             ("embeddings_bge.npy",              "BGE-large-en-v1.5",    "encoder"),
     "mpnet":           ("embeddings_mpnet.npy",            "all-mpnet-base-v2",    "encoder"),
@@ -36,6 +44,7 @@ NORMALIZE_EMBEDDINGS = True
 KNN_SEED = 0
 TIER_ORDER = ["Collapse", "Striving", "Conflict", "Activation", "Growth", "Clarity", "Unity"]
 TIER_TO_IDX = {t: i for i, t in enumerate(TIER_ORDER)}
+# GES: random pairs sampled for each ordered (source tier, target tier) combination.
 PAIRS_PER_TIERPAIR = 200
 GES_SEED = 123
 EPS = 1e-12
@@ -46,12 +55,14 @@ def l2_normalize_rows(x, eps=1e-12):
 
 
 def build_symmetric_knn_graph(X, k, metric):
+    """Undirected kNN graph (union of directed neighbours, Euclidean edge weights); same rule as 3_build_knn.py."""
     n = X.shape[0]
     if not 1 <= k < n:
         raise ValueError(f"bad k={k} for n={n}")
     nn = NearestNeighbors(n_neighbors=k + 1, metric=metric)
     nn.fit(X)
     dists, nbrs = nn.kneighbors(X, return_distance=True)
+    # Drop column 0, the point's match with itself.
     dists, nbrs = dists[:, 1:], nbrs[:, 1:]
     edge = {}
     for i in range(n):
@@ -72,6 +83,7 @@ def build_symmetric_knn_graph(X, k, metric):
 
 
 def compute_tts(tiers, A):
+    """TTS: distribution of ordinal tier jumps over kNN edges, overall and per tier (as in 5_tts.py)."""
     tier_idx = np.array([TIER_TO_IDX[t] for t in tiers], dtype=int)
     Acoo = A.tocoo()
     jc = defaultdict(int)
@@ -100,6 +112,7 @@ def compute_tts(tiers, A):
 
 
 def sample_pairs(rng, idx_a, idx_b, m):
+    """Draw m (i, j) pairs with replacement, i from idx_a and j from idx_b; i != j when the groups coincide."""
     if len(idx_a) == 0 or len(idx_b) == 0:
         return []
     pairs, same = [], np.array_equal(idx_a, idx_b)
@@ -114,7 +127,9 @@ def sample_pairs(rng, idx_a, idx_b, m):
 
 
 def compute_ges(df, E, A, key, k):
+    """GES: weighted shortest-path distance on A divided by Euclidean distance in E, per tier pair and overall."""
     rng = np.random.default_rng(GES_SEED + k)
+    # All-pairs weighted geodesic distances; inf for pairs in different components.
     distG = shortest_path(A, directed=False, unweighted=False)
     tiers_s = df["tier"].astype(str)
     present = [t for t in TIER_ORDER if t in set(tiers_s)]
@@ -126,8 +141,10 @@ def compute_ges(df, E, A, key, k):
             for i, j in sample_pairs(rng, idx_by[ta], idx_by[tb], PAIRS_PER_TIERPAIR):
                 total += 1
                 g = distG[i, j]
+                # Skip unreachable pairs and zero-distance pairs; reachable_ratio = pairs used / pairs sampled.
                 if not np.isfinite(g):
                     continue
+                # Euclidean distance on E as loaded; the stored embeddings are already unit-norm, so this matches the graph's space.
                 e = float(np.linalg.norm(E[i] - E[j]))
                 if e < EPS:
                     continue
@@ -150,6 +167,7 @@ def compute_ges(df, E, A, key, k):
 
 
 def plot_heatmap(heat, path, title, vmin, vmax):
+    """Annotated tier-pair GES heatmap on a fixed colour range [vmin, vmax]."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -206,6 +224,7 @@ def run_for_model(df, key, out_root, heatmaps):
         heat.to_csv(os.path.join(gdir, "ges_heatmap.csv"))
         pd.DataFrame([{"model": key, "k": k, **summ}]).to_csv(os.path.join(gdir, "ges_summary.csv"), index=False)
 
+        # tts_jump_le1 = fraction of edges joining the same or adjacent tiers.
         r = dict(tts_o.set_index("jump")["ratio"])
         results.append({"model": key, "display_name": name, "group": group, "k": k,
                         "connected_components": int(n_comp),
@@ -216,6 +235,7 @@ def run_for_model(df, key, out_root, heatmaps):
         print(f"  k={k}: components={n_comp}  TTS jump<=1={results[-1]['tts_jump_le1']:.3f}  "
               f"GES mean={summ['ges_mean']:.3f}")
 
+    # One colour scale shared across all k for this model, so its heatmaps are comparable.
     if heatmaps:
         vals = np.concatenate([r["_heat"].to_numpy(float).ravel() for r in results])
         vals = vals[np.isfinite(vals)]
@@ -226,6 +246,7 @@ def run_for_model(df, key, out_root, heatmaps):
 
 
 def write_tex(summary, path, table_k):
+    """Compact LaTeX table: TTS at table_k and mean GES for every k."""
     SHORT = {"BGE-large-en-v1.5": "BGE-large", "all-mpnet-base-v2": "MPNet",
              "all-MiniLM-L6-v2": "MiniLM", "Qwen3-Embedding-0.6B": "Qwen3-Emb-0.6B"}
     ks = sorted(summary["k"].unique())
@@ -270,6 +291,7 @@ def _side_by_side(left, right):
 
 
 def write_full_tex(summary, out_dir):
+    """Write the full TTS table (all jump sizes, all k) and full GES table (mean/median/std, all k)."""
     models = [m for m in MODELS if m in set(summary["model"])]
     ks = sorted(summary["k"].unique())
     S = summary.set_index(["model", "k"])
@@ -280,6 +302,7 @@ def write_full_tex(summary, out_dir):
         T = ["\\begin{tabular}[t]{@{}p{19mm}ccccc@{}}", "\\toprule",
              "Model & $k$ & jump0 & jump1 & jump2 & jump$>$2 \\\\", "\\midrule"]
         for bi, k in enumerate(klist):
+            # Bold the best value within each k: highest for jump0/jump1, lowest for jump2/jump>2.
             best = {c: (max if hi else min)(S.loc[(m, k), c] for m in models) for c, hi in cols}
             for i, m in enumerate(models):
                 cells = []

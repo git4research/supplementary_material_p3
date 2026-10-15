@@ -1,3 +1,9 @@
+"""Build the blind pairwise-comparison workbook for generation quality (Section 2.5.3).
+
+For each (prompt, sample) in the selected low tiers, every pair of cells (condition@alpha) becomes one
+row with A/B sides randomized by seed. Sheets: to_judge (blind), key (cell identities), pairs (coverage).
+Usage: python 32_build_pairs_plan.py --in mental_health.jsonl --out pairs_plan.xlsx
+"""
 from __future__ import annotations
 
 import argparse
@@ -14,13 +20,16 @@ HERE = Path(__file__).parent
 DEFAULT_GEN = HERE / "outputs" / "qwen2.5_3b_L24" / "generations" / "mental_health_800tok_diag.jsonl"
 DEFAULT_OUT = HERE / "outputs" / "qwen2.5_3b_L24" / "pairs_plan.xlsx"
 
+# Compared cells (condition or condition@alpha) and the low tiers included by default.
 DEFAULT_CELLS = "baseline,global_ridge@0.2,global_ridge@0.3,local_manifold@0.2,local_manifold@0.3"
 DEFAULT_TIERS = {"Collapse", "Striving", "Conflict"}
 
+# (condition, alpha); alpha is None for baseline.
 Cell = Tuple[str, Optional[float]]
 
 
 def parse_cell(s: str) -> Cell:
+    """Parse "condition" or "condition@alpha" into a Cell."""
     s = s.strip()
     if "@" in s:
         c, a = s.split("@", 1)
@@ -35,6 +44,7 @@ def cell_label(cell: Cell) -> str:
 
 
 def _sidx(r: Dict) -> int:
+    """Sample index of a row, accepting several field names (default 0)."""
     for k in ("sample_idx", "sample", "sample_id"):
         if k in r:
             try:
@@ -45,6 +55,7 @@ def _sidx(r: Dict) -> int:
 
 
 def _resp(r: Dict) -> str:
+    """First non-empty response text field of a row."""
     for k in ("response", "generation", "completion", "text", "output"):
         v = r.get(k)
         if isinstance(v, str) and v.strip():
@@ -53,6 +64,7 @@ def _resp(r: Dict) -> str:
 
 
 def load_groups(path: Path, tiers: set, samples: set) -> Dict[Tuple[str, int], Dict[Cell, Dict]]:
+    """Group generations as (prompt_id, sample_idx) -> {cell: row}, filtered by tier and sample."""
     groups: Dict[Tuple[str, int], Dict[Cell, Dict]] = {}
     with open(path) as f:
         for line in f:
@@ -104,6 +116,7 @@ def main():
         raise SystemExit(f"Input not found: {infile}")
 
     groups = load_groups(infile, tiers, samples)
+    # Round-robin: every unordered pair of cells.
     pair_list = list(combinations(cells, 2))
 
     rows = []
@@ -116,12 +129,14 @@ def main():
         prompt_text = next(iter(by_cell.values())).get("prompt", "")
         for a, b in pair_list:
             rA0, rB0 = by_cell.get(a), by_cell.get(b)
+            # Skip the pair if either cell has no generation for this (prompt, sample).
             if rA0 is None or rB0 is None:
                 continue
             pair_coverage[(cell_label(a), cell_label(b))] += 1
             if args.both_orders:
                 orients = [(a, rA0, b, rB0), (b, rB0, a, rA0)]
             else:
+                # Randomize which cell is shown as A to avoid position bias.
                 orients = [(a, rA0, b, rB0)] if rng.random() < 0.5 else [(b, rB0, a, rA0)]
             for (cellA, rowA, cellB, rowB) in orients:
                 cid += 1
@@ -152,6 +167,7 @@ def main():
             c.fill = hdr_fill
             c.alignment = Alignment(horizontal="center", vertical="center")
 
+    # Sheet to_judge: the blind view given to the judge (no cell identities).
     ws = wb.active
     ws.title = "to_judge"
     jh = ["comparison_id", "tier", "category", "prompt", "response_A", "response_B", "winner (A/B)"]
@@ -167,6 +183,7 @@ def main():
         ws.column_dimensions[get_column_letter(j)].width = w
     ws.freeze_panes = "A2"
 
+    # Sheet key: maps comparison_id to the hidden cell identities.
     ws2 = wb.create_sheet("key")
     kh = ["comparison_id", "prompt_id", "sample_idx", "tier", "cell_A", "cell_B"]
     _header(ws2, kh)
@@ -177,6 +194,7 @@ def main():
         ws2.column_dimensions[get_column_letter(j)].width = w
     ws2.freeze_panes = "A2"
 
+    # Sheet pairs: number of (prompt, sample) groups covering each cell pair.
     ws3 = wb.create_sheet("pairs")
     _header(ws3, ["pair_index", "cell_A", "cell_B", "n_groups_covered"])
     for i, ((la, lb), n) in enumerate(pair_coverage.items(), start=2):

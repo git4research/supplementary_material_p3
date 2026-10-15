@@ -1,3 +1,10 @@
+"""TF-IDF lexical baseline for score regression and tier classification (Appendix E.4).
+
+Uses word 1-2 gram TF-IDF features with Ridge (score R^2/MSE) and logistic regression (tier
+accuracy / weighted F1) over N_SPLITS (30) random 80/20 splits; the vectorizer is fit on each
+training split only. Also saves 2-D/3-D UMAP plots of the full-corpus TF-IDF matrix and a seed-0
+confusion matrix. Reads the dataset CSV; writes figures and CSVs to outputs/tfidf_baseline/.
+"""
 from __future__ import annotations
 
 import os
@@ -15,8 +22,9 @@ from sklearn.metrics import (
     confusion_matrix,
 )
 
+# Import UMAP, falling back to the submodule path used by some umap-learn versions.
 try:
-    import umap  
+    import umap
     _UMAP_CLASS = umap.UMAP
 except Exception:
     import umap.umap_ as umap
@@ -30,7 +38,7 @@ from matplotlib.colors import LinearSegmentedColormap, Normalize
 CSV_PATH = "full_dataset_with_scores_new.csv"
 OUT_DIR = os.path.join("outputs", "tfidf_baseline")
 
-N_SPLITS = 20
+N_SPLITS = 30
 TEST_SIZE = 0.2
 RIDGE_ALPHA = 1.0
 LOGREG_MAX_ITER = 2000
@@ -58,6 +66,7 @@ TIER_ORDER = [
 
 
 def make_energetic_colormap():
+    # Continuous colormap running through the seven tier colors (low to high score).
     energetic_colors = [
         "#ff3b3b",
         "#ff8b3d",
@@ -169,6 +178,7 @@ def eval_once_tfidf_regression(
         texts, y_score, test_size=TEST_SIZE, random_state=seed
     )
 
+    # Fit the vocabulary/IDF on the training split only to avoid test leakage.
     vec = TfidfVectorizer(**vec_kwargs)
     X_train = vec.fit_transform(X_train_txt)
     X_test = vec.transform(X_test_txt)
@@ -209,6 +219,7 @@ def eval_once_tfidf_classification(
     save_artifacts: bool = False,
     out_dir: str | None = None,
 ) -> dict:
+    # Stratified split by tier; optionally saves the confusion matrix for this split.
 
     X_train_txt, X_test_txt, y_train, y_test = train_test_split(
         texts, y_tier, test_size=TEST_SIZE, random_state=seed, stratify=y_tier
@@ -257,6 +268,7 @@ def main() -> None:
         lowercase=True,
     )
 
+    # Full-corpus TF-IDF is used only for the UMAP visualizations, not for evaluation.
     vec_all = TfidfVectorizer(**vec_kwargs)
     X_all_tfidf = vec_all.fit_transform(texts)
     if UMAP_DENSIFY:
@@ -279,7 +291,7 @@ def main() -> None:
             y_tier,
             seed,
             vec_kwargs,
-            save_artifacts=(seed == SEED0),
+            save_artifacts=(seed == SEED0),  # confusion matrix for the first split only
             out_dir=OUT_DIR,
         )
 

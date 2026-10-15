@@ -1,3 +1,9 @@
+"""LLM-as-judge scoring for Section 2.5.3, with a local Hugging Face or Anthropic API backend.
+--task longform: rate each response's factual claims; factuality_rate = SUPPORTED / (SUPPORTED + UNSUPPORTED).
+--task mental_health_pairwise: blind A/B judging of the 32_build_pairs_plan.py workbook, plus win-rate sheets.
+--task simpleqa is a legacy task not used in the paper. Outputs: *_judged.jsonl or *_judged.xlsx.
+Usage: python 18_llm_judge.py --model qwen --task longform --backend anthropic
+"""
 from __future__ import annotations
 
 import argparse
@@ -9,6 +15,7 @@ import time
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional
 
+# Conservative threading defaults for local model loading.
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
@@ -25,6 +32,7 @@ from model_runtime import load_model_and_tokenizer, pick_device
 
 
 class Judge:
+    """Minimal judge interface: query(system, user) returns the raw text reply."""
     name: str
     model_id: str
 
@@ -36,6 +44,7 @@ class Judge:
 
 
 class LocalJudge(Judge):
+    """Judge backed by a local Hugging Face chat model with greedy decoding."""
     name = "local"
 
     def __init__(self, model_id: str = DEFAULT_LOCAL_MODEL):
@@ -54,6 +63,7 @@ class LocalJudge(Judge):
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ]
+        # Gemma-2 chat templates have no system role, so the system prompt is prepended to the user turn.
         if self.model.config.model_type == "gemma2":
             chat = [{"role": "user", "content": system + "\n\n" + user}]
         inputs = self.tokenizer.apply_chat_template(
@@ -77,6 +87,7 @@ class LocalJudge(Judge):
 
 
 class AnthropicJudge(Judge):
+    """Judge backed by the Anthropic Messages API (requires ANTHROPIC_API_KEY)."""
     name = "anthropic"
 
     def __init__(self, model_id: str = DEFAULT_ANTHROPIC_MODEL):
@@ -108,6 +119,7 @@ class AnthropicJudge(Judge):
 
 
 def _extract_json(text: str) -> Optional[Dict]:
+    """Parse a JSON object from judge output: fenced block, then whole text, then first {...} span."""
     text = text.strip()
     m = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
     if m:
@@ -127,6 +139,7 @@ def _extract_json(text: str) -> Optional[Dict]:
         return None
 
 
+# Legacy SimpleQA grader prompt (not used in the paper).
 SIMPLEQA_SYSTEM = (
     "You are a precise grader for short-form factoid questions. "
     "You will be given a question, a gold-standard answer, and a predicted answer. "
@@ -177,6 +190,7 @@ Output ONLY a JSON object with a single key:
 """
 
 
+# Long-form factuality: claim decomposition and per-claim rating.
 LONGFORM_SYSTEM = (
     "You are a careful factuality grader.  You will be given a question and a "
     "model's long-form response.  Your job is to enumerate every concrete factual "
@@ -217,6 +231,7 @@ If the response contains NO concrete factual claims (e.g. it's all hedge), outpu
 """
 
 
+# Pairwise generation-quality rubric: safety gate first, then the quality criteria and a tie-break.
 MENTAL_HEALTH_PAIRWISE_SYSTEM = (
     "You are an experienced therapist and skilled writer comparing two short supportive "
     "responses to the same person in emotional distress.\n"
@@ -293,6 +308,7 @@ You MUST pick one. Output JSON only:
 
 
 def score_row_simpleqa(judge: Judge, row: Dict, debug: bool = False) -> Dict:
+    """Legacy: grade one SimpleQA response; falls back to keyword search if JSON parsing fails."""
     gt = (row.get("prompt_metadata") or {}).get("ground_truth", "")
     user_msg = SIMPLEQA_TEMPLATE.format(
         question=row["prompt"],
@@ -324,6 +340,7 @@ def score_row_simpleqa(judge: Judge, row: Dict, debug: bool = False) -> Dict:
 
 
 def score_row_longform(judge: Judge, row: Dict, debug: bool = False) -> Dict:
+    """Rate the claims in one long-form response; UNCERTAIN claims are excluded from factuality_rate."""
     user_msg = LONGFORM_TEMPLATE.format(
         question=row["prompt"],
         response=row["response"],
@@ -355,6 +372,7 @@ def score_row_longform(judge: Judge, row: Dict, debug: bool = False) -> Dict:
 
 def score_pair_mental_health(judge: Judge, prompt: str, response_a: str, response_b: str,
                              debug: bool = False) -> Dict:
+    """Judge one A/B pair; winner is None if the reply contains no valid A/B choice."""
     user_msg = MENTAL_HEALTH_PAIRWISE_TEMPLATE.format(
         prompt=prompt, response_A=response_a, response_B=response_b,
     )
@@ -362,6 +380,7 @@ def score_pair_mental_health(judge: Judge, prompt: str, response_a: str, respons
     if debug:
         print(f"  [debug] judge raw: {raw[:300]!r}")
     parsed = _extract_json(raw) or {}
+    # Keep only the first character so replies such as "A." still parse.
     winner = str(parsed.get("winner", "")).strip().upper()[:1]
     return {
         "winner": winner if winner in ("A", "B") else None,
@@ -371,6 +390,7 @@ def score_pair_mental_health(judge: Judge, prompt: str, response_a: str, respons
     }
 
 
+# JSONL tasks: default input filename and per-row scoring function.
 TASKS = {
     "simpleqa":      ("factuality_simpleqa.jsonl",      score_row_simpleqa),
     "longform":      ("factuality_longform.jsonl",      score_row_longform),
@@ -378,6 +398,7 @@ TASKS = {
 
 
 def _row_key(row: Dict) -> tuple:
+    """Identity of a generation row, used to skip already-judged rows when resuming."""
     return (
         row.get("model_id"),
         row.get("model_key"),
@@ -391,6 +412,7 @@ def _row_key(row: Dict) -> tuple:
 
 
 def _load_jsonl(path: Path) -> List[Dict]:
+    """Read a JSONL file, skipping blank and malformed lines."""
     if not path.exists():
         raise FileNotFoundError(f"Input JSONL not found: {path}")
     out = []
@@ -424,6 +446,7 @@ def _load_done_keys(path: Path) -> set:
 
 
 def _append(path: Path, row: Dict):
+    """Append one row and fsync so progress survives interruption."""
     with open(path, "a") as f:
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
         f.flush()
@@ -439,6 +462,7 @@ def judge_jsonl(
     debug: bool = False,
     resume: bool = True,
 ):
+    """Judge rows of in_path not yet in out_path and append each row with its judge_result."""
     rows = _load_jsonl(in_path)
     previous_rows = _load_jsonl(out_path) if resume and out_path.exists() else []
     validate_single_experiment(rows + previous_rows)
@@ -459,6 +483,7 @@ def judge_jsonl(
     n_debug = 3 if debug else 0
     for i, row in enumerate(to_do):
         is_debug_row = i < n_debug
+        # A failed call is written as an error row, so it is not retried on resume.
         try:
             result = score_fn(judge, row, debug=is_debug_row)
         except Exception as e:
@@ -476,11 +501,13 @@ def judge_jsonl(
     print(f"       elapsed: {(time.time()-t0)/60:.1f} min")
 
 
+# Pairwise mental-health judging reads and writes the xlsx workbook from 32_build_pairs_plan.py.
 PAIRWISE_TASK = "mental_health_pairwise"
 WINNER_COL = "winner (A/B)"
 
 
 def _sheet_columns(ws) -> Dict[str, int]:
+    """Map header names in row 1 to column indices."""
     return {c.value: c.column for c in ws[1] if c.value is not None}
 
 
@@ -494,6 +521,7 @@ def _write_table(wb, title: str, header: List[str], rows: List[list]):
 
 
 def _add_win_rate_sheets(wb):
+    """Unblind verdicts via the key sheet and write overall, per-tier and primary-reason tallies."""
     if "key" not in wb.sheetnames:
         print("  [note] no 'key' sheet: win-rate sheets not written")
         return
@@ -515,6 +543,7 @@ def _add_win_rate_sheets(wb):
             continue
         tier, ca, cb = key[cid]
         winner_cell = ca if win == "A" else cb
+        # Each comparison is one appearance for both cells and one win for the winning cell.
         for cell in (ca, cb):
             for d, k in ((overall, cell), (by_tier, (tier, cell))):
                 app, w = d.get(k, (0, 0))
@@ -538,7 +567,9 @@ def judge_pairs_xlsx(
     debug: bool = False,
     resume: bool = True,
 ):
+    """Fill winner / primary_reason / why for unjudged to_judge rows, saving every 20 pairs."""
     from openpyxl import load_workbook
+    # Resume from the partially judged output workbook if it exists.
     src = out_path if (resume and out_path.exists()) else in_path
     wb = load_workbook(src)
     ws = wb["to_judge"]
@@ -548,6 +579,7 @@ def judge_pairs_xlsx(
             c = ws.max_column + 1
             ws.cell(1, c, name)
             col[name] = c
+    # Rows that do not yet have a valid A/B verdict.
     todo = [r for r in range(2, ws.max_row + 1)
             if ws.cell(r, col["comparison_id"]).value is not None
             and ws.cell(r, col[WINNER_COL]).value not in ("A", "B")]
@@ -568,6 +600,7 @@ def judge_pairs_xlsx(
             )
         except Exception as e:
             print(f"  [error] comparison {ws.cell(r, col['comparison_id']).value}: {e}")
+            # Leave the row unjudged; it is retried on the next run.
             continue
         ws.cell(r, col[WINNER_COL], res["winner"])
         ws.cell(r, col["primary_reason"], res["primary_reason"])
@@ -585,6 +618,7 @@ def judge_pairs_xlsx(
 
 
 def _quick_stats(out_path: Path, task: str):
+    """Print a per-(condition, alpha) summary of the judged JSONL."""
     rows = _load_jsonl(out_path)
     if not rows:
         return
@@ -618,6 +652,7 @@ def _quick_stats(out_path: Path, task: str):
             sups   = [r.get("judge_result", {}).get("n_supported",   0) or 0 for r in rs]
             unsups = [r.get("judge_result", {}).get("n_unsupported", 0) or 0 for r in rs]
             uncs   = [r.get("judge_result", {}).get("n_uncertain",   0) or 0 for r in rs]
+            # Mean of per-response rates; responses with no SUPPORTED/UNSUPPORTED claims are excluded.
             rates  = [r.get("judge_result", {}).get("factuality_rate") for r in rs]
             rates  = [r for r in rates if isinstance(r, (int, float))]
             avg_rate = sum(rates) / len(rates) if rates else 0.0
@@ -645,6 +680,7 @@ def _parse_args():
 def main():
     args = _parse_args()
     task = args.task
+    # Pairwise task: workbook in, judged workbook out.
     if task == PAIRWISE_TASK:
         if not args.in_path:
             raise SystemExit("--in is required: the pairs workbook written by 32_build_pairs_plan.py")

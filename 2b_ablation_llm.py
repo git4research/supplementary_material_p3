@@ -1,3 +1,11 @@
+"""Score-direction ablation probe for the four encoders and six LLMs (Sections 2.1, 3.1 / Appendix E).
+
+Compares Ridge/MLP test R^2 over 30 random 80/20 splits on the original embeddings vs. after projecting
+out the Ridge score direction, fit once on all sentences (in-sample) or per training split (held-out),
+each with a permuted-label control. Reads all_embeddings/*.npy and the dataset CSV; writes summary and
+per-split CSVs and a LaTeX table to outputs/ablation_probe_llm/.
+Usage: python 2b_ablation_llm.py --group llm --out-dir outputs/ablation_probe_llm
+"""
 from __future__ import annotations
 
 import argparse
@@ -16,6 +24,7 @@ CSV_PATH = os.path.join(HERE, "full_dataset_with_scores_new.csv")
 EMB_DIR = os.path.join(HERE, "all_embeddings")
 DEFAULT_OUT = os.path.join(HERE, "outputs", "ablation_probe_llm")
 
+# key -> (embedding file in all_embeddings/, display name, group).
 MODELS = {
     "bge":             ("embeddings_bge.npy",              "BGE-large-en-v1.5",  "encoder"),
     "mpnet":           ("embeddings_mpnet.npy",            "all-mpnet-base-v2",  "encoder"),
@@ -60,12 +69,14 @@ def l2_normalize_rows(X: np.ndarray, eps: float = 1e-12) -> np.ndarray:
 
 
 def fit_direction(X_train, y_train):
+    """Unit-norm Ridge coefficient vector, i.e. the linear score direction."""
     model = Ridge(alpha=RIDGE_ALPHA)
     model.fit(X_train, y_train)
     return unit_norm(model.coef_)
 
 
 def remove_direction(X, w):
+    """Project rows of X onto the orthogonal complement of the unit vector w."""
     X_abl = X - np.outer(X @ w, w)
     return l2_normalize_rows(X_abl) if RENORMALIZE_AFTER_ABLATION else X_abl
 
@@ -91,6 +102,7 @@ def summarize(values):
 
 
 def run_for_model(df, key):
+    """Run all splits and the five conditions for one model; return (summary dict, per-split DataFrame)."""
     fname, name, group = MODELS[key]
     print(f"\n==================== {name} ({key}) ====================")
     X = np.load(os.path.join(EMB_DIR, fname)).astype(np.float64)
@@ -99,6 +111,7 @@ def run_for_model(df, key):
         raise ValueError(f"Embedding rows ({len(X)}) != dataframe rows ({len(y)}) for {key}")
     print(f"[EMB] {fname}  shape={X.shape}")
 
+    # In-sample protocol: one direction fit on all sentences (test rows included), reused for every split.
     w_all = fit_direction(X, y)
     w_all_perm = fit_direction(X, np.random.default_rng(BASE_SEED).permutation(y))
     X_in, X_in_perm = remove_direction(X, w_all), remove_direction(X, w_all_perm)
@@ -111,6 +124,7 @@ def run_for_model(df, key):
         X_train, X_test = X[train_idx], X[test_idx]
         y_train, y_test = y[train_idx], y[test_idx]
 
+        # Held-out protocol: direction refit on each training split only.
         w_energy = fit_direction(X_train, y_train)
         rng = np.random.default_rng(seed)
         w_perm = fit_direction(X_train, rng.permutation(y_train))
@@ -139,6 +153,7 @@ def run_for_model(df, key):
             mu, sd = summarize(sub[metric].values)
             summary[f"{condition}_{metric}_mean"] = mu
             summary[f"{condition}_{metric}_std"] = sd
+    # Paired per-split deltas, original minus each ablated condition.
     pivot = df_long.pivot(index="split", columns="condition")
     for ablated in CONDITIONS[1:]:
         prefix = f"delta_{ablated}"
@@ -151,10 +166,12 @@ def run_for_model(df, key):
 
 
 def write_tex(df_summary: pd.DataFrame, path: str):
+    """Write the LaTeX ablation table (mean test R^2 per condition) as two side-by-side halves."""
     SHORT = {"BGE-large-en-v1.5": "BGE-large", "all-mpnet-base-v2": "MPNet",
              "all-MiniLM-L6-v2": "MiniLM", "Qwen3-Embedding-0.6B": "Qwen3-Emb-0.6B"}
     COLS = ["original", "insample_ablated", "heldout_ablated", "heldout_perm"]
 
+    # Format numbers without the leading zero (e.g. .123, -.045).
     def num(v):
         return f"{v:.3f}".replace("0.", ".", 1) if v >= 0 else "-" + f"{abs(v):.3f}".replace("0.", ".", 1)
 
@@ -175,6 +192,7 @@ def write_tex(df_summary: pd.DataFrame, path: str):
         return T
 
     df_summary = df_summary.reset_index(drop=True)
+    # Largest absolute mean R^2 change under either permuted-label control; quoted in the caption.
     perm_max = max(abs(df_summary[f"delta_{c}_{m}_mean"]).max()
                    for c in ("insample_perm", "heldout_perm") for m in ("ridge_r2", "mlp_r2"))
     mid = (len(df_summary) + 1) // 2

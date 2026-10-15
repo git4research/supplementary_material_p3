@@ -1,3 +1,10 @@
+"""Build symmetric kNN graphs on L2-normalized sentence embeddings (Sections 2.2-2.3, 3.2).
+
+For each model and k in {10, 15, 20, 30}, links each sentence to its k nearest neighbours with the
+Euclidean distance as edge weight, symmetrizes by undirected union, and reports connectivity.
+Reads outputs/<model>/embeddings.npy; writes adjacency_csr.npz and meta.json to
+outputs/<model>/knn_k<k>_euclidean/. Later scripts (4-7) read these graphs.
+"""
 from __future__ import annotations
 
 import json
@@ -49,6 +56,7 @@ def l2_normalize_rows(x: np.ndarray, eps: float = 1e-12) -> np.ndarray:
 
 
 def build_symmetric_knn_graph(X: np.ndarray, k: int, metric: str) -> sparse.csr_matrix:
+    """Undirected kNN graph: edge (i, j) if either node is among the other's k nearest; weight = distance."""
     if k < 1:
         raise ValueError("k must be >= 1")
 
@@ -56,6 +64,7 @@ def build_symmetric_knn_graph(X: np.ndarray, k: int, metric: str) -> sparse.csr_
     if k >= n:
         raise ValueError(f"k must be smaller than number of nodes. Got k={k}, n={n}")
 
+    # Query k + 1 neighbours because the first match is the point itself.
     nn = NearestNeighbors(n_neighbors=k + 1, metric=metric)
     nn.fit(X)
     dists, nbrs = nn.kneighbors(X, return_distance=True)
@@ -70,9 +79,11 @@ def build_symmetric_knn_graph(X: np.ndarray, k: int, metric: str) -> sparse.csr_
             j = int(nbrs[i, m])
             w = float(dists[i, m])
 
+            # Skip self-matches (possible when duplicate points tie at distance 0).
             if i == j:
                 continue
 
+            # Store each undirected edge once; if found from both ends, keep the smaller distance.
             a, b = (i, j) if i < j else (j, i)
 
             if (a, b) not in edge_dict:
@@ -88,6 +99,7 @@ def build_symmetric_knn_graph(X: np.ndarray, k: int, metric: str) -> sparse.csr_
 
     A = sparse.csr_matrix((data, (rows, cols)), shape=(n, n))
     A = A.tolil()
+    # Remove any self-loops, then drop explicitly stored zeros from the sparse matrix.
     A.setdiag(0.0)
     A = A.tocsr()
     A.eliminate_zeros()
@@ -124,6 +136,7 @@ def main():
                 f"Row mismatch: CSV has {len(df)} rows, embeddings have {X.shape[0]} rows"
             )
 
+        # On unit-norm rows, Euclidean distance is a monotone function of cosine distance.
         if NORMALIZE_EMBEDDINGS:
             X = l2_normalize_rows(X)
 
@@ -140,6 +153,7 @@ def main():
 
             n_comp, labels = connected_components(A, directed=False)
             largest_cc = int(np.bincount(labels).max())
+            # Degree = neighbours per node after symmetrization; density counts both directions of each edge.
             avg_degree = float(A.getnnz(axis=1).mean())
             density = float(A.nnz / (A.shape[0] ** 2))
 

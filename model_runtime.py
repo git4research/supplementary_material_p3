@@ -1,3 +1,7 @@
+"""Device/dtype resolution, model loading and decoder-block lookup shared by the steering scripts.
+
+Steering hooks attach to model.model.layers[L - 1]; layer L is the output of decoder block L (1-based).
+"""
 import os
 
 
@@ -20,6 +24,7 @@ def pick_device(device="auto"):
 
 
 def resolve_dtype(dtype, device, model_id=""):
+    """Map --dtype to a torch dtype; 'auto' uses float32 on CPU and bfloat16 on CUDA when supported."""
     import torch
 
     if dtype == "auto":
@@ -27,6 +32,7 @@ def resolve_dtype(dtype, device, model_id=""):
             return torch.float32
         if device == "cuda" and torch.cuda.is_bf16_supported():
             return torch.bfloat16
+        # Otherwise Gemma-2 uses float32 rather than float16.
         if "gemma-2" in model_id.lower():
             return torch.float32
         return torch.float16
@@ -38,6 +44,7 @@ def resolve_dtype(dtype, device, model_id=""):
 
 
 def load_model_and_tokenizer(model_id, device="auto", dtype="auto"):
+    """Load an eval-mode causal LM and tokenizer, using EOS as the pad token when none is defined."""
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
     os.environ.setdefault("HF_ENABLE_PARALLEL_LOADING", "false")
 
@@ -73,6 +80,7 @@ def decoder_layers(model):
 
 
 def get_layer_module(model, layer_index_1based):
+    """Return the decoder block for a 1-based layer index (layer L = output of block L)."""
     layers = decoder_layers(model)
     if not 1 <= layer_index_1based <= len(layers):
         raise IndexError(f"Layer {layer_index_1based} outside 1..{len(layers)}")

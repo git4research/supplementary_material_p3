@@ -1,3 +1,10 @@
+"""Extract block-output residual activations of every anchor sentence at candidate layers (Section 2.5.1).
+
+Each sentence is pooled at its last non-padding token (default) and L2-normalized.
+Input: the annotated sentence CSV. Outputs: OUTPUT_ROOT/<model_key>/layer_XX/embeddings.npy
+and activation_meta.json (settings and dataset hash). Optional --refine-from adds layers near a coarse selection.
+Example: python 11_get_llm_activations.py --model qwen --batch-size 8
+"""
 import argparse
 import json
 from pathlib import Path
@@ -13,12 +20,14 @@ from model_runtime import decoder_layers, load_model_and_tokenizer, pick_device
 
 
 def pool_hidden(hidden, attention_mask, mode):
+    """Pool [batch, seq, dim] hidden states to one vector per sentence."""
     if mode == "last_token":
         return hidden[:, -1, :]
     if mode == "mean":
         mask = attention_mask.unsqueeze(-1).to(hidden.dtype)
         return (hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1e-6)
     if mode == "last_nonpad":
+        # Index of the last position with attention_mask == 1 in each row.
         positions = torch.arange(hidden.shape[1], device=hidden.device)
         indices = positions.expand_as(attention_mask).masked_fill(attention_mask == 0, -1).max(dim=1).values
         if torch.any(indices < 0):
@@ -28,11 +37,13 @@ def pool_hidden(hidden, attention_mask, mode):
 
 
 def collect_block_activations(model, encoding, layers_to_save, pooling):
+    """Run one forward pass and capture pooled outputs of the requested 1-based decoder blocks."""
     pooled_outputs = {}
     handles = []
 
     def make_capture(layer_number):
         def capture(module, inputs, output):
+            # Decoder blocks may return a tuple; element 0 is the residual-stream hidden state.
             hidden = output[0] if isinstance(output, tuple) else output
             pooled_outputs[layer_number] = pool_hidden(
                 hidden, encoding["attention_mask"], pooling
@@ -73,6 +84,7 @@ def main():
     spec = get_model_spec(args.model_id, args.model_key)
     output_dir = Path(args.output_root).expanduser().resolve() / spec.key
     coarse_selection = None
+    # Refinement mode: load and validate the coarse selection; extraction settings must match it (checked below).
     if args.refine_from:
         source_path = Path(args.refine_from).expanduser().resolve()
         source_model_dir = source_path.parent.parent
@@ -127,6 +139,7 @@ def main():
 
     saved_paths = {}
     for layer, values in activations.items():
+        # L2-normalize each sentence vector after pooling.
         values /= np.maximum(np.linalg.norm(values, axis=1, keepdims=True), 1e-12)
         destination = output_dir / f"layer_{layer:02d}" / "embeddings.npy"
         destination.parent.mkdir(parents=True, exist_ok=True)
